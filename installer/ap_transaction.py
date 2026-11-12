@@ -11,6 +11,7 @@ import stat
 
 from installer.ownership_receipt import write_new_receipt, read_receipt
 from installer.owned_cleanup import safe_cleanup
+from installer.creation_intent import record_intent
 
 
 class ProvisionError(RuntimeError):
@@ -33,14 +34,19 @@ def prepare(adapter, receipt_dir):
     if not stat.S_ISDIR(info.st_mode) or info.st_mode & 0o077 or info.st_uid != os.geteuid():
         raise ProvisionError("Receipt directory must be privately owned (0700)")
     receipts = [directory / (name + ".json") for name, _ in INTERFACES]
-    if any(path.exists() or path.is_symlink() for path in receipts):
-        raise ProvisionError("Stale or conflicting ownership receipt; refusing adoption")
+    intents = [directory / (name + ".intent.json") for name, _ in INTERFACES]
+    if any(path.exists() or path.is_symlink() for path in receipts + intents):
+        raise ProvisionError("Stale ownership receipt or creation intent; refusing adoption")
     if any(adapter.inspect(name) is not None for name, _ in INTERFACES):
         raise ProvisionError("Reserved interface name already exists; refusing adoption")
 
     created = []
     try:
         for (name, kind), path in zip(INTERFACES, receipts):
+            # Durable intent predates the kernel call. If the process dies
+            # before the ifindex receipt exists, the marker blocks adoption.
+            # It is NOT evidence that the interface was created or owned.
+            record_intent(directory, name, kind)
             adapter.create(name, kind)
             # Only this transaction can have created the interface, because
             # name collision checks happened before create. Verify instantly.

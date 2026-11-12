@@ -348,6 +348,31 @@ service files, start the hotspot or assume a successful audit makes the
 single-radio laptop safe. A durable creation/ownership handshake and
 isolated hardware tests are still outstanding.
 
+## Phase 6 interface-creation intent records (draft PR #9)
+
+The simulated AP transaction now writes a private, fsynced per-interface
+`.intent.json` file **before** calling the injected adapter's create
+operation. This complements the existing post-creation ifindex ownership
+receipt and persistent startup journal.
+
+If a process dies between kernel interface creation and the ifindex receipt,
+the intent survives and refuses further automatic preparation. **An intent
+alone cannot prove an interface was created or identify a particular live
+interface, so it never permits deletion or adoption.** Intents deliberately
+remain after simulated cleanup until a separately reviewed operator
+resolution workflow exists. They are not automatically removed.
+
+Read-only inspection of a private development test directory:
+
+```bash
+python3 scripts/techworld-creation-intent-status.py --receipt-dir /path/to/private/dir
+```
+
+This deliberately exits nonzero, never clears evidence, and does not
+authorize a restart. The installed legacy AP scripts and systemd services
+remain unchanged; live network mutators are disabled. Do not activate the
+hotspot or deploy these draft changes as a production installer.
+
 ## Offline tests
 
 ```bash
