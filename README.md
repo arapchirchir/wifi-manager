@@ -7,6 +7,7 @@ Ubuntu wireless hotspot and captive portal management tools.
 ## Current features
 
 - Detects upstream Wi-Fi adapter, PHY, channel and advertised concurrent station+AP support.
+- Includes a pure hostapd configuration renderer that derives the AP channel from the detected upstream channel, plus a pre-start guard that rejects mismatched STA/AP channels **before changing interfaces**. These are preparatory pieces, not yet deployed automatically on the host.
 - Checks existing Techworld services, ports, interfaces, and shared system services.
 - Preserves existing Techworld gateway or suggests an unused private subnet for planning.
 - Prompts for Wi-Fi SSID and captive portal domain. Auto-detects uplink, gateway and DHCP range.
@@ -70,6 +71,10 @@ sudo ./install.sh --advanced
 ```
 
 Advanced mode first asks whether to customize detected network settings. Manual uplink, gateway or DHCP changes are not yet supported by the live updater. Such changes are rejected rather than risking a partial network migration.
+
+## Channel synchronization safety
+
+For a single-radio adapter, the hotspot's channel needs to follow the upstream association. The repository's `installer/channel_config.py` can render a matching hostapd configuration without writing to the system. The revised `scripts/techworld-ap-prepare` rejects an incorrect channel before modifying the network. **The full deployment integration is not complete:** do not copy these scripts over the live installation or restart the hotspot until the guarded update and recovery process is ready. A router that changes channels after startup still needs a supervised recovery mechanism.
 
 ## Security and limitations
 
