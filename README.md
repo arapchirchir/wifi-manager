@@ -178,6 +178,23 @@ still requires a production network adapter, an exclusive lock, persisted
 crash recovery and package/service configuration integration. The legacy
 installed scripts are unchanged. Do not use `--execute` yet.
 
+## Dynamic WAN selection preview (Issue #2)
+
+The read-only `installer/uplink_selection.py` now compares connected Wi-Fi
+and Ethernet IPv4 default routes, respects route metrics, prefers Ethernet
+on equal metrics, verifies Wi-Fi association and refuses ambiguous routes.
+No NetworkManager profile or firewall setting is modified.
+
+```bash
+python3 scripts/techworld-uplink-plan.py --json
+```
+
+A default gateway does **not** prove real internet access. For Ethernet,
+the available AP radio and regulatory channel must still be validated. A
+live Wi-Fi to Ethernet transition, restart, crash recovery and installation
+integration are **not implemented**. Keep GitHub issue #2 open and don't
+start the hotspot based on this read-only selection alone.
+
 ## Offline tests
 
 ```bash
