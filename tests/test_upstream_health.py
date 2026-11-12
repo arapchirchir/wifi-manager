@@ -11,11 +11,12 @@ spec.loader.exec_module(mod)
 
 
 class FakeRunner:
-    def __init__(self, connected=True, channel=11, ssid="Talai", gateway=True):
+    def __init__(self, connected=True, channel=11, ssid="Talai", gateway=True, routes=None):
         self.connected = connected
         self.channel = channel
         self.ssid = ssid
         self.gateway = gateway
+        self.routes = routes
         self.calls = []
 
     def __call__(self, cmd):
@@ -28,9 +29,12 @@ class FakeRunner:
                     (f"\tchannel {self.channel} (2462 MHz)\n"
                      if self.channel is not None else ""))
         if cmd[0] == "ip":
+            if cmd != ["ip", "-j", "-4", "route", "show", "default"]:
+                raise AssertionError(f"Unexpected route command: {cmd}")
             return json.dumps(
-                [{"dst": "default", "gateway": "192.168.100.1", "dev": "wlp109s0"}]
-                if self.gateway else []
+                self.routes if self.routes is not None else
+                ([{"dst": "default", "gateway": "192.168.100.1", "dev": "wlp109s0"}]
+                 if self.gateway else [])
             )
         raise AssertionError(f"Unexpected command: {cmd}")
 
@@ -42,6 +46,31 @@ class UpstreamHealthTests(unittest.TestCase):
         self.assertTrue(report["healthy"])
         self.assertEqual(report["default_gateway"], "192.168.100.1")
         self.assertEqual({c[0] for c in runner.calls}, {"nmcli", "iw", "ip"})
+
+    def test_ubuntu_actual_unfiltered_json_route(self):
+        # Captured from Ubuntu: the unfiltered response includes dev.
+        runner = FakeRunner(routes=[{
+            "dst": "default", "gateway": "192.168.100.1",
+            "dev": "wlp109s0", "protocol": "dhcp",
+            "prefsrc": "192.168.100.3", "metric": 600, "flags": [],
+        }])
+        report = mod.inspect("wlp109s0", 11, runner)
+        self.assertTrue(report["healthy"])
+        self.assertEqual(report["default_gateway"], "192.168.100.1")
+
+    def test_other_interface_default_route_not_accepted(self):
+        runner = FakeRunner(routes=[{
+            "dst": "default", "gateway": "172.17.0.1", "dev": "docker0"
+        }])
+        report = mod.inspect("wlp109s0", 11, runner)
+        self.assertFalse(report["healthy"])
+
+    def test_ambiguous_default_route_without_interface_fails_closed(self):
+        runner = FakeRunner(routes=[{
+            "dst": "default", "gateway": "192.168.100.1"
+        }])
+        report = mod.inspect("wlp109s0", 11, runner)
+        self.assertFalse(report["healthy"])
 
     def test_disconnected_fails(self):
         self.assertFalse(mod.inspect("wlp109s0", 11, FakeRunner(connected=False))["healthy"])
