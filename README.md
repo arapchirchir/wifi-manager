@@ -151,6 +151,19 @@ design. A production adapter, process-level transaction lock, dynamic
 uplink configuration, and reliable hostapd rollback must be in place before
 supervised live startup. Do not copy this branch's scripts to the host yet.
 
+## Hostapd configuration rollback (development, not deployed)
+
+`installer/hostapd_transaction.py` validates the dedicated hostapd file,
+changes the legacy 2.4 GHz channel atomically, and can restore the previous
+contents after an unsuccessful setup. A rollback refuses to overwrite
+another process's later changes. The tests use disposable files only.
+
+**Phase 1 is not complete:** the AP creation transaction, ownership-aware
+cleanup, hostapd rollback and supervisor are still separate components.
+The production adapter, locking, crash recovery, hardware channel changes
+and systemd deployment have not been integrated. Avoid executing the live
+hotspot on the single-radio workstation until this work is finished.
+
 ## Offline tests
 
 ```bash
