@@ -85,6 +85,24 @@ For a single-radio adapter, the hotspot's channel needs to follow the upstream a
 - Production deployments require a real domain with trusted HTTPS; .test is reserved for local development.
 - A DNS record for wireless.test does not yet provide a Laravel portal or HTTPS endpoint.
 
+## Read-only post-start checks
+
+The new `scripts/techworld-post-start-health.py` verifies the upstream
+NetworkManager association, default route, AP mode/channel alignment and five
+Techworld service states. It **only inspects** the system. It does not
+test actual Internet reachability, stop/restart services, change interfaces
+or repair a dropped upstream connection.
+
+Run it after a supervised hotspot startup:
+
+```bash
+python3 scripts/techworld-post-start-health.py --uplink wlp109s0 --json
+```
+
+Until the protected deployment and rollback flow is finished, do not start
+the existing hotspot merely to run this checker. The script is not connected
+to systemd yet, and a healthy result would not prove external Internet access.
+
 ## Offline tests
 
 ```bash
