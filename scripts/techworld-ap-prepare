@@ -6,13 +6,31 @@ AP="ap0"
 BRIDGE="br-techworld"
 GATEWAY="10.77.77.1/24"
 
-# Verify upstream channel
-CHANNEL=$(iw dev "$UPLINK" info | awk '$1=="channel" {print $2; exit}')
+# Validate the actual upstream channel BEFORE touching any interface.
+# Both managed STA and AP must share one channel on single-channel radios.
+HOSTAPD_CONF="${TECHWORLD_HOSTAPD_CONF:-/etc/hostapd/techworld.conf}"
+UPLINK_INFO=$(iw dev "$UPLINK" info)
+CONNECTED_SSID=$(awk '$1=="ssid" {print $2; exit}' <<< "$UPLINK_INFO")
+CHANNEL=$(awk '$1=="channel" {print $2; exit}' <<< "$UPLINK_INFO")
 
-if [[ "$CHANNEL" != "6" ]]; then
-    echo "ERROR: Upstream Wi-Fi must be on channel 6."
+if [[ -z "$CONNECTED_SSID" || ! "$CHANNEL" =~ ^[0-9]+$ ]]; then
+    echo "ERROR: Upstream Wi-Fi is not associated or its channel is unknown." >&2
     exit 1
 fi
+
+if [[ ! -f "$HOSTAPD_CONF" ]]; then
+    echo "ERROR: Hostapd configuration is missing: $HOSTAPD_CONF" >&2
+    exit 1
+fi
+
+CONFIG_CHANNEL=$(awk -F= '$1 ~ /^[[:space:]]*channel[[:space:]]*$/ {gsub(/[[:space:]]/, "", $2); print $2}' "$HOSTAPD_CONF")
+if [[ ! "$CONFIG_CHANNEL" =~ ^[0-9]+$ || "$CONFIG_CHANNEL" != "$CHANNEL" ]]; then
+    echo "ERROR: Upstream Wi-Fi channel is $CHANNEL, but hostapd is configured for channel ${CONFIG_CHANNEL:-unset}." >&2
+    echo "The installer must synchronize channels with explicit approval before the hotspot starts." >&2
+    exit 1
+fi
+
+echo "Verified upstream SSID '$CONNECTED_SSID' on channel $CHANNEL; AP channel matches."
 
 # Create the Linux bridge if missing
 if ! ip link show "$BRIDGE" >/dev/null 2>&1; then
