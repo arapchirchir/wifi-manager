@@ -6,6 +6,24 @@ AP="ap0"
 BRIDGE="br-techworld"
 GATEWAY="10.77.77.1/24"
 
+# Ensure the upstream is a NetworkManager-managed active connection and
+# owns a default IPv4 route. These checks do not initiate traffic or modify
+# Wi-Fi, DNS, firewall rules, or saved connection profiles.
+NM_STATE=$(nmcli -g GENERAL.STATE device show "$UPLINK" 2>/dev/null || true)
+if [[ ! "$NM_STATE" =~ ^100[[:space:]]*\(connected\) ]]; then
+    echo "ERROR: Upstream $UPLINK is not connected in NetworkManager (${NM_STATE:-unknown})." >&2
+    exit 1
+fi
+
+UPLINK_ROUTE=$(ip -4 route show default dev "$UPLINK")
+if [[ -z "$UPLINK_ROUTE" ]]; then
+    echo "ERROR: No IPv4 default route through upstream $UPLINK; refusing hotspot startup." >&2
+    exit 1
+fi
+
+# Do not infer internet availability from the default route alone.
+# Follow-up post-start checks must verify connectivity and fail safely.
+
 # Validate the actual upstream channel BEFORE touching any interface.
 # Both managed STA and AP must share one channel on single-channel radios.
 HOSTAPD_CONF="${TECHWORLD_HOSTAPD_CONF:-/etc/hostapd/techworld.conf}"
