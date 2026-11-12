@@ -120,14 +120,15 @@ class CleanupTests(unittest.TestCase):
         def read(cmd):
             if cmd == ["ip", "-j", "-d", "link", "show"]:
                 calls[0] += 1
-                if calls[0] >= 6:
+                if calls[0] >= 5:
                     raise RuntimeError("link inspection unavailable")
             return net.read(cmd)
         # A monitoring failure must never permit deleting the bridge.
         # This injected reader raises before the bridge is removed.
-        with self.assertRaises(RuntimeError):
-            safe_cleanup(self.receipt, execute=True, reader=read,
-                         mutator=net.mutate)
+        result = safe_cleanup(self.receipt, execute=True, reader=read,
+                              mutator=net.mutate)
+        self.assertTrue(any("Cannot verify bridge membership" in error
+                            for error in result["errors"]))
         self.assertIn("br-techworld", net.links)
 
     def test_observation_detects_bridge_and_ap(self):
