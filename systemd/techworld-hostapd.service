@@ -1,0 +1,21 @@
+[Unit]
+Description=Techworld-WiFi Hotspot Broadcasting
+Requires=techworld-ap.service
+After=techworld-ap.service
+PartOf=techworld-hotspot.service
+
+[Service]
+Type=simple
+
+# Start Wi-Fi broadcasting
+ExecStart=/usr/sbin/hostapd /etc/hostapd/techworld.conf
+
+# Restart if hostapd crashes
+Restart=on-failure
+RestartSec=3
+
+# Graceful shutdown
+TimeoutStopSec=10
+
+[Install]
+WantedBy=multi-user.target

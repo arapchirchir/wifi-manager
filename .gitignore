@@ -1,0 +1,32 @@
+# Live machine configurations
+/config/*
+!/config/*.example
+!/config/*.template
+
+# Environment files and secrets
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+
+# Backups
+*.bak
+*.backup
+*.before-*
+*.pre-*
+*.tar.gz
+
+# Runtime files
+*.log
+*.pid
+*.sock
+
+# Dependencies
+/vendor/
+/node_modules/
+
+# Editor files
+.vscode/
+.idea/

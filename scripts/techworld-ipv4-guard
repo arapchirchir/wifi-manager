@@ -1,0 +1,126 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+IFACE="br-techworld"
+UPLINK="wlp109s0"
+GATEWAY="10.77.77.1"
+SUBNET="10.77.77.0/24"
+CHAIN="TW_HOTSPOT_FWD"
+
+PRIVATE_NETWORKS=(
+    "10.0.0.0/8"
+    "172.16.0.0/12"
+    "192.168.0.0/16"
+    "127.0.0.0/8"
+    "169.254.0.0/16"
+)
+
+add_rule() {
+    local chain="$1"
+    shift
+
+    iptables -w -C "$chain" "$@" 2>/dev/null ||
+        iptables -w -I "$chain" 1 "$@"
+}
+
+remove_rule() {
+    local chain="$1"
+    shift
+
+    while iptables -w -C "$chain" "$@" 2>/dev/null; do
+        iptables -w -D "$chain" "$@"
+    done
+}
+
+case "${1:-}" in
+    start)
+        # Protect access to the Ubuntu gateway
+        add_rule INPUT -i "$IFACE" -j DROP
+
+        # Allow DHCP broadcasts
+        add_rule INPUT -i "$IFACE" \
+            -p udp --dport 67 -j ACCEPT
+
+        # Allow DNS and captive portal
+        for entry in "udp 53" "tcp 53" "tcp 2050"; do
+            read -r proto port <<< "$entry"
+
+            add_rule INPUT -i "$IFACE" -d "$GATEWAY" \
+                -p "$proto" --dport "$port" -j ACCEPT
+        done
+
+        # Create dedicated forwarding chain
+        if ! iptables -w -S "$CHAIN" >/dev/null 2>&1; then
+            iptables -w -N "$CHAIN"
+        fi
+
+        # Rebuild forwarding policy
+        iptables -w -F "$CHAIN"
+
+        # Block access to private networks
+        for subnet in "${PRIVATE_NETWORKS[@]}"; do
+            iptables -w -A "$CHAIN" \
+                -d "$subnet" -j DROP
+        done
+
+        # Allow only openNDS-authenticated internet traffic
+        iptables -w -A "$CHAIN" \
+            -s "$SUBNET" \
+            -o "$UPLINK" \
+            -m mark --mark 0x30000/0x30000 \
+            -j ACCEPT
+
+        # Deny everything else
+        iptables -w -A "$CHAIN" -j DROP
+
+        # Ensure our chain is first in FORWARD
+        remove_rule FORWARD -i "$IFACE" -j "$CHAIN"
+
+        iptables -w -I FORWARD 1 \
+            -i "$IFACE" -j "$CHAIN"
+
+        echo "Techworld IPv4 firewall enabled."
+        ;;
+
+    stop)
+        # Detach dedicated forwarding chain
+        remove_rule FORWARD -i "$IFACE" -j "$CHAIN"
+
+        if iptables -w -S "$CHAIN" >/dev/null 2>&1; then
+            iptables -w -F "$CHAIN"
+            iptables -w -X "$CHAIN"
+        fi
+
+        # Remove legacy hotspot forwarding rules
+        remove_rule FORWARD -i "$IFACE" -j DROP
+
+        remove_rule FORWARD \
+            -s "$SUBNET" -i "$IFACE" -o "$UPLINK" \
+            -m mark --mark 0x30000/0x30000 -j ACCEPT
+
+        for subnet in "${PRIVATE_NETWORKS[@]}"; do
+            remove_rule FORWARD \
+                -d "$subnet" -i "$IFACE" -j DROP
+        done
+
+        # Remove gateway exceptions
+        for entry in "udp 53" "tcp 53" "tcp 2050"; do
+            read -r proto port <<< "$entry"
+
+            remove_rule INPUT -i "$IFACE" -d "$GATEWAY" \
+                -p "$proto" --dport "$port" -j ACCEPT
+        done
+
+        remove_rule INPUT -i "$IFACE" \
+            -p udp --dport 67 -j ACCEPT
+
+        remove_rule INPUT -i "$IFACE" -j DROP
+
+        echo "Techworld IPv4 firewall removed."
+        ;;
+
+    *)
+        echo "Usage: $0 {start|stop}"
+        exit 1
+        ;;
+esac

@@ -1,0 +1,26 @@
+[Unit]
+Description=Techworld-WiFi Captive Portal
+Wants=network-online.target
+After=network-online.target
+
+Requires=techworld-ap.service
+Requires=techworld-isolation.service
+Requires=techworld-nat.service
+Requires=techworld-hostapd.service
+Requires=techworld-dhcp.service
+
+BindsTo=opennds.service
+After=opennds.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+
+ExecStart=/usr/bin/true
+ExecStop=/usr/bin/true
+
+TimeoutStartSec=60
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SUBNET="10.77.77.0/24"
+UPLINK="wlp109s0"
+
+RULE=(-s "$SUBNET" -o "$UPLINK" -j MASQUERADE)
+
+case "${1:-}" in
+    start)
+        # Enable IPv4 forwarding
+        sysctl -q -w net.ipv4.ip_forward=1
+
+        # Add NAT rule if not already present
+        iptables -w -t nat -C POSTROUTING \
+            "${RULE[@]}" 2>/dev/null || \
+        iptables -w -t nat -A POSTROUTING \
+            "${RULE[@]}"
+
+        echo "Techworld NAT enabled."
+        ;;
+
+    stop)
+        # Remove only the Techworld NAT rule
+        while iptables -w -t nat -C POSTROUTING \
+            "${RULE[@]}" 2>/dev/null; do
+            iptables -w -t nat -D POSTROUTING \
+                "${RULE[@]}"
+        done
+
+        echo "Techworld NAT removed."
+        ;;
+
+    *)
+        echo "Usage: $0 {start|stop}"
+        exit 1
+        ;;
+esac

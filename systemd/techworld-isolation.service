@@ -1,0 +1,21 @@
+[Unit]
+Description=Techworld-WiFi Private Network Isolation
+
+Requires=techworld-ap.service
+After=techworld-ap.service
+Before=opennds.service
+
+PartOf=techworld-hotspot.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+
+# Apply isolation rules
+ExecStart=/usr/local/sbin/techworld-firewall-isolate start
+
+# Remove isolation rules during shutdown
+ExecStop=/usr/local/sbin/techworld-firewall-isolate stop
+
+TimeoutStartSec=15
+TimeoutStopSec=15

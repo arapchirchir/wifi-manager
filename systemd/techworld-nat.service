@@ -1,0 +1,12 @@
+[Unit]
+Description=Techworld-WiFi IPv4 NAT
+Requires=techworld-ap.service
+After=techworld-ap.service
+Before=opennds.service
+PartOf=techworld-hotspot.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/techworld-nat start
+ExecStop=/usr/local/sbin/techworld-nat stop

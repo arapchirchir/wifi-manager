@@ -1,0 +1,16 @@
+[Unit]
+Description=Techworld-WiFi Virtual Access Point
+Wants=NetworkManager.service
+After=NetworkManager.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+
+# Prepare virtual AP interface and gateway IP
+ExecStart=/usr/local/sbin/techworld-ap-prepare
+
+# Remove virtual interface when service stops
+ExecStop=/bin/sh -c 'iw dev ap0 del 2>/dev/null || true'
+
+TimeoutStartSec=30

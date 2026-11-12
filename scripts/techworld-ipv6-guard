@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+IFACE="br-techworld"
+CHAIN="TW_GUEST_V6"
+
+case "${1:-}" in
+  start)
+    ip6tables -w -N "$CHAIN" 2>/dev/null || true
+    ip6tables -w -F "$CHAIN"
+    ip6tables -w -A "$CHAIN" -j DROP
+
+    for rule in "INPUT -i" "FORWARD -i" "FORWARD -o"; do
+      read -r tablechain direction <<< "$rule"
+
+      ip6tables -w -C "$tablechain" \
+        "$direction" "$IFACE" -j "$CHAIN" 2>/dev/null || \
+      ip6tables -w -I "$tablechain" 1 \
+        "$direction" "$IFACE" -j "$CHAIN"
+    done
+    ;;
+
+  stop)
+    for rule in "INPUT -i" "FORWARD -i" "FORWARD -o"; do
+      read -r tablechain direction <<< "$rule"
+
+      while ip6tables -w -C "$tablechain" \
+        "$direction" "$IFACE" -j "$CHAIN" 2>/dev/null; do
+        ip6tables -w -D "$tablechain" \
+          "$direction" "$IFACE" -j "$CHAIN"
+      done
+    done
+
+    ip6tables -w -F "$CHAIN" 2>/dev/null || true
+    ip6tables -w -X "$CHAIN" 2>/dev/null || true
+    ;;
+
+  *)
+    echo "Usage: $0 {start|stop}"
+    exit 1
+    ;;
+esac

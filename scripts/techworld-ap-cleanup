@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+AP="ap0"
+BRIDGE="br-techworld"
+
+# Remove our virtual Wi-Fi interface
+if iw dev "$AP" info >/dev/null 2>&1; then
+    ip link set "$AP" down
+    iw dev "$AP" del
+fi
+
+# Remove our dedicated bridge
+if ip link show "$BRIDGE" >/dev/null 2>&1; then
+    ip link set "$BRIDGE" down
+    ip link delete "$BRIDGE" type bridge
+fi
+
+echo "Techworld-WiFi interfaces cleaned up."

@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+UPLINK="wlp109s0"
+AP="ap0"
+BRIDGE="br-techworld"
+GATEWAY="10.77.77.1/24"
+
+# Verify upstream channel
+CHANNEL=$(iw dev "$UPLINK" info | awk '$1=="channel" {print $2; exit}')
+
+if [[ "$CHANNEL" != "6" ]]; then
+    echo "ERROR: Upstream Wi-Fi must be on channel 6."
+    exit 1
+fi
+
+# Create the Linux bridge if missing
+if ! ip link show "$BRIDGE" >/dev/null 2>&1; then
+    ip link add name "$BRIDGE" type bridge
+fi
+
+# Create the AP interface if missing
+if ! iw dev "$AP" info >/dev/null 2>&1; then
+    iw dev "$UPLINK" interface add "$AP" type __ap
+fi
+
+# Confirm AP mode
+MODE=$(iw dev "$AP" info | awk '$1=="type" {print $2; exit}')
+
+if [[ "$MODE" != "AP" ]]; then
+    echo "ERROR: $AP is not in AP mode."
+    exit 1
+fi
+
+# Prevent NetworkManager from controlling AP
+nmcli device set "$AP" managed no
+
+# Move any previous gateway IP off ap0
+if ip -o -4 addr show dev "$AP" | grep -Fq "$GATEWAY"; then
+    ip addr del "$GATEWAY" dev "$AP"
+fi
+
+# Connect AP to bridge
+ip link set "$AP" down
+ip link set "$AP" master "$BRIDGE"
+
+# Assign gateway IP to bridge
+if ! ip -o -4 addr show dev "$BRIDGE" | grep -Fq "$GATEWAY"; then
+    ip addr add "$GATEWAY" dev "$BRIDGE"
+fi
+
+# Bring interfaces up
+ip link set "$BRIDGE" up
+ip link set "$AP" up
+
+echo "Techworld bridge and AP prepared successfully."

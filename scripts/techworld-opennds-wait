@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+HEARTBEAT="/tmp/ndscids/heartbeat"
+MAX_ATTEMPTS=60
+STALE_AFTER=17
+
+for ((i=1; i<=MAX_ATTEMPTS; i++)); do
+
+    # Never start a second openNDS while one exists.
+    if pgrep -x opennds >/dev/null; then
+        sleep 1
+        continue
+    fi
+
+    # No process and no heartbeat means startup is safe.
+    if [[ ! -e "$HEARTBEAT" ]]; then
+        echo "No previous openNDS heartbeat found."
+        exit 0
+    fi
+
+    beat=$(cat "$HEARTBEAT" 2>/dev/null || true)
+    now=$(date +%s)
+
+    # Reject invalid timestamps rather than guessing.
+    if [[ "$beat" =~ ^[0-9]+$ ]]; then
+        if (( now - beat >= STALE_AFTER )); then
+            echo "Previous openNDS heartbeat has expired."
+            exit 0
+        fi
+    fi
+
+    sleep 1
+done
+
+echo "Cannot safely start openNDS: process or heartbeat remains active." >&2
+exit 1

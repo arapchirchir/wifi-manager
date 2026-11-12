@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+BRIDGE="br-techworld"
+CHAIN="TW_GUEST_V4"
+
+case "${1:-}" in
+    start)
+        # Create our dedicated firewall chain
+        iptables -w -t raw -N "$CHAIN" 2>/dev/null || true
+        iptables -w -t raw -F "$CHAIN"
+
+        # Permit traffic addressed to the gateway itself.
+        # INPUT firewall rules still restrict accessible ports.
+        iptables -w -t raw -A "$CHAIN" \
+            -d 10.77.77.1/32 -j RETURN
+
+        # Block access to private and local networks
+        for subnet in \
+            10.0.0.0/8 \
+            172.16.0.0/12 \
+            192.168.0.0/16 \
+            127.0.0.0/8 \
+            169.254.0.0/16
+        do
+            iptables -w -t raw -A "$CHAIN" \
+                -d "$subnet" -j DROP
+        done
+
+        iptables -w -t raw -A "$CHAIN" -j RETURN
+
+        # Attach only to our hotspot bridge
+        iptables -w -t raw -C PREROUTING \
+            -i "$BRIDGE" -j "$CHAIN" 2>/dev/null || \
+        iptables -w -t raw -I PREROUTING 1 \
+            -i "$BRIDGE" -j "$CHAIN"
+
+        echo "Techworld private-network isolation installed."
+        ;;
+
+    stop)
+        # Remove only our dedicated firewall rules
+        while iptables -w -t raw -C PREROUTING \
+            -i "$BRIDGE" -j "$CHAIN" 2>/dev/null
+        do
+            iptables -w -t raw -D PREROUTING \
+                -i "$BRIDGE" -j "$CHAIN"
+        done
+
+        iptables -w -t raw -F "$CHAIN" 2>/dev/null || true
+        iptables -w -t raw -X "$CHAIN" 2>/dev/null || true
+
+        echo "Techworld isolation rules removed."
+        ;;
+
+    *)
+        echo "Usage: $0 {start|stop}"
+        exit 1
+        ;;
+esac
