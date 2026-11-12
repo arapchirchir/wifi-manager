@@ -219,6 +219,29 @@ reachability, live transition/restart, locking, crash recovery and end-to-end
 deployment.
 The legacy installed scripts are unchanged. Do not enable the hotspot yet.
 
+## Coordinated startup and recovery simulation
+
+`installer/startup_controller.py` now combines upstream identity checks,
+exclusive private locking, ownership-recorded AP setup, hostapd channel
+updates, injected Techworld service startup and post-start verification.
+Failure paths stop only enumerated Techworld services, verify their state,
+remove only receipt-matched interfaces, and restore the original hostapd
+configuration only when service shutdown and config identity are confirmed.
+
+`installer/setup_lock.py` uses a private 0700-owned directory and a
+nonblocking file lock; simultaneous simulated startups are refused. Tests
+include partial service failures, upstream changes, unknown interface
+ownership, repeated locking and failed stop cleanup. These tests use **mocked
+service and network adapters** and temporary files, not the real laptop.
+
+**Not production ready:** the live legacy systemd units and shell
+preparation/cleanup scripts remain separate from this controller. In
+particular, interface creation and the ownership receipt are not yet
+crash-atomic, service and lock interoperability with legacy processes is
+not guaranteed, and there is no durable post-crash recovery journal or
+actual upstream Internet reachability verification. Do not execute live
+startup, enable the installed hotspot, or merge this as production-ready.
+
 ## Offline tests
 
 ```bash
