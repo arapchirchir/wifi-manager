@@ -24,6 +24,8 @@ class SimulatedSystem:
         if cmd[0] == "nmcli":
             return "100 (connected)\n" if self.connected else "30 (disconnected)\n"
         if cmd[0] == "iw":
+            if cmd[-1] == "link":
+                return "Connected to 04:25:c5:9a:77:a0 (on wlp109s0)\n\tSSID: Talai\n"
             return "Interface wlp109s0\nssid Talai\nchannel 11 (2462 MHz)\n"
         if cmd[0] == "ip":
             return json.dumps([{
