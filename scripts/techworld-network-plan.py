@@ -8,7 +8,8 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from installer.uplink_selection import inspect, run, SelectionError
-from installer.radio_selection import parse_radios, choose_radio, RadioError
+from installer.radio_selection import (parse_radios, choose_radio, RadioError,
+                                       radio_block_state, regulatory_report)
 
 
 def plan(*, reader=run, ap_radio=None):
@@ -18,10 +19,23 @@ def plan(*, reader=run, ap_radio=None):
     for phy in radios:
         infos[phy] = reader(["iw", "phy", phy, "info"])
     ap = choose_radio(radios, wan["selected"], infos, preferred=ap_radio)
-    return {**wan, "ap_radio": ap, "restart_safe": False,
+    block = radio_block_state(reader(["rfkill", "list"]), ap["phy"])
+    regulatory = regulatory_report(reader(["iw", "reg", "get"]))
+    selected = dict(wan["selected"])
+    candidates = [dict(candidate) for candidate in wan["candidates"]]
+    if selected["kind"] == "wifi" and selected.get("phy") == ap["phy"]:
+        selected["ap_channel"] = ap["channel"]
+        selected["channel_source"] = ap["reason"]
+        for candidate in candidates:
+            if candidate["interface"] == selected["interface"] and candidate["gateway"] == selected["gateway"]:
+                candidate["ap_channel"] = ap["channel"]
+                candidate["channel_source"] = ap["reason"]
+    return {**wan, "selected": selected, "candidates": candidates,
+            "ap_radio": ap, "rfkill": block, "regulatory": regulatory,
+            "restart_safe": False,
             "warnings": [
                 "No external internet reachability verification",
-                "Rfkill and regulatory domain not fully validated",
+                "Rfkill checked; regulatory rules not fully validated",
                 "Live hotspot restart and rollback are not implemented",
             ]}
 
