@@ -24,16 +24,30 @@ def shell_read(args):
 def observe(names, reader=shell_read):
     """Collect current ifindices and kinds from iproute2 and iw, read-only."""
     raw = json.loads(reader(["ip", "-j", "-d", "link", "show"]))
-    if not isinstance(raw, list):
-        raise CleanupError("Invalid iproute2 link report")
-    by_name = {item.get("ifname"): item for item in raw}
+    if not isinstance(raw, list) or not all(
+        isinstance(item, dict)
+        and isinstance(item.get("ifname"), str)
+        and item["ifname"]
+        and type(item.get("ifindex")) is int
+        and item["ifindex"] > 0
+        for item in raw
+    ):
+        raise CleanupError("Invalid or incomplete iproute2 link report")
+    names_seen = [item["ifname"] for item in raw]
+    indices_seen = [item["ifindex"] for item in raw]
+    if len(names_seen) != len(set(names_seen)) or len(indices_seen) != len(set(indices_seen)):
+        raise CleanupError("Duplicate interface identity in link report")
+    by_name = {item["ifname"]: item for item in raw}
     seen = {}
     for name in names:
         if name not in by_name:
             continue
         item = by_name[name]
         index = item.get("ifindex")
-        kind = item.get("linkinfo", {}).get("info_kind")
+        linkinfo = item.get("linkinfo")
+        if linkinfo is not None and not isinstance(linkinfo, dict):
+            raise CleanupError("Invalid link kind report")
+        kind = (linkinfo or {}).get("info_kind")
         if kind == "bridge":
             seen[name] = {"ifindex": index, "kind": "bridge"}
             continue
@@ -55,9 +69,22 @@ def bridge_members(bridge, reader=shell_read):
     raw = json.loads(reader(["ip", "-j", "-d", "link", "show"]))
     if not isinstance(raw, list):
         raise CleanupError("Invalid link listing during bridge membership check")
-    if not all(isinstance(item, dict) and isinstance(item.get("ifname"), str)
-               for item in raw):
+    if not all(
+        isinstance(item, dict)
+        and isinstance(item.get("ifname"), str)
+        and item["ifname"]
+        and type(item.get("ifindex")) is int
+        and item["ifindex"] > 0
+        for item in raw
+    ):
         raise CleanupError("Incomplete link listing during bridge membership check")
+    names = [item["ifname"] for item in raw]
+    indices = [item["ifindex"] for item in raw]
+    if len(set(names)) != len(names) or len(set(indices)) != len(indices):
+        raise CleanupError("Ambiguous link listing during bridge membership check")
+    matches = [item for item in raw if item["ifname"] == bridge]
+    if len(matches) != 1:
+        raise CleanupError("Bridge identity absent during membership check")
     return [item["ifname"] for item in raw if item.get("master") == bridge]
 
 
