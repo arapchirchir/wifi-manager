@@ -6,6 +6,8 @@ ownership-checked rollback. Caller supplies an isolated execution adapter, so
 no host networking is changed by importing this module.
 """
 from pathlib import Path
+import os
+import stat
 
 from installer.ownership_receipt import write_new_receipt, read_receipt
 from installer.owned_cleanup import safe_cleanup
@@ -27,6 +29,9 @@ def prepare(adapter, receipt_dir):
     covering concurrent runs, and independent upstream/config verification.
     """
     directory = Path(receipt_dir)
+    info = directory.lstat()
+    if not stat.S_ISDIR(info.st_mode) or info.st_mode & 0o077 or info.st_uid != os.geteuid():
+        raise ProvisionError("Receipt directory must be privately owned (0700)")
     receipts = [directory / (name + ".json") for name, _ in INTERFACES]
     if any(path.exists() or path.is_symlink() for path in receipts):
         raise ProvisionError("Stale or conflicting ownership receipt; refusing adoption")
@@ -70,6 +75,9 @@ def rollback(adapter, receipt_dir):
     directory = Path(receipt_dir)
     failures = []
     for name, _ in reversed(INTERFACES):
+        if name == "br-techworld" and adapter.inspect("ap0") is not None:
+            failures.append("AP still present: retaining bridge")
+            continue
         path = directory / (name + ".json")
         if not path.exists() and not path.is_symlink():
             continue
