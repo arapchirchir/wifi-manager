@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Interactive Techworld-WiFi configuration preview.
 
-Planning only: this script never changes any file, package, network interface,
-firewall rule or service. Actual installation is not implemented yet.
+Updates an existing Techworld-WiFi installation only after explicit approval.
+Fresh installation, DHCP/network changes and Laravel are not implemented yet.
 """
 import argparse
 import ipaddress
@@ -15,6 +15,7 @@ from pathlib import Path
 # Allow direct execution and importlib-based offline tests.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from auto_network import DiscoveryError, auto_pool, conflicting_network, discover
+from apply_existing import ApplyError, apply_existing
 
 ROOT = Path(__file__).resolve().parents[1]
 PREFLIGHT = ROOT / "scripts" / "techworld-preflight.py"
@@ -145,14 +146,20 @@ def ask(prompt, default):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(
-        description="Techworld-WiFi interactive configuration preview (no installation)"
+        description="Techworld-WiFi existing-hotspot setup with explicit approval"
     )
     parser.add_argument("--non-interactive", action="store_true")
-    parser.add_argument("--advanced", action="store_true", help="Show advanced network overrides")
+    parser.add_argument("--advanced", action="store_true", help="Offer optional manual network overrides")
+    parser.add_argument("--plan-only", action="store_true", help="Preview settings without asking to apply")
+    parser.add_argument("--yes", action="store_true", help="Approve existing-installation SSID/DNS update")
     parser.add_argument("--json", action="store_true", help="Machine-readable non-interactive preview")
     for flag in ("ssid", "domain", "uplink", "gateway", "dhcp-start", "dhcp-end"):
         parser.add_argument("--" + flag, dest=flag.replace("-", "_"))
     args = parser.parse_args(argv)
+    if args.json and args.yes:
+        parser.error("--json is read-only; remove --yes to inspect the plan")
+    if args.plan_only and args.yes:
+        parser.error("--plan-only cannot be combined with --yes")
 
     try:
         preflight = get_preflight()
@@ -165,7 +172,7 @@ def main(argv=None):
         if not args.json:
             print("\nTECHWORLD-WIFI | INTERACTIVE INSTALLATION PREVIEW")
             print(f"Existing installation: {preflight.get('status')}")
-            print("No services or networking settings will be changed.\n")
+            print("Read-only detection completed. Applying changes requires consent.\n")
         detected = discover(preflight["status"])
         defaults = {
             "ssid": "Techworld-WiFi",
@@ -193,10 +200,15 @@ def main(argv=None):
             "dhcp_start": "DHCP range start",
             "dhcp_end": "DHCP range end",
         }
+        override_network = False
+        if args.advanced and not args.json and not args.non_interactive:
+            answer = input("Customize auto-detected network settings? [y/N]: ")
+            override_network = answer.strip().lower() in ("y", "yes")
+
         values = {}
         for key, default in defaults.items():
             given = getattr(args, key)
-            prompt = key in ("ssid", "domain") or args.advanced
+            prompt = key in ("ssid", "domain") or override_network
             values[key] = given if given is not None else (
                 default if args.non_interactive or args.json or not prompt
                 else ask(labels[key], default)
@@ -257,7 +269,55 @@ def main(argv=None):
               " - " + result["portal"]["dhcp_end"])
         for note in result["warnings"]:
             print("NOTE: " + note)
-        print("\nNOT INSTALLED. Live hotspot and system files are untouched.")
+        print("\nConfiguration review complete.")
+        status = result["preflight_status"]
+        if args.plan_only:
+            print("Plan-only selected; no changes made.")
+        elif status == "clean":
+            print(
+                "A fresh installation is not implemented yet. "
+                "Nothing was installed or changed."
+            )
+        elif args.non_interactive and not args.yes:
+            print(
+                "Non-interactive mode is preview-only without --yes. "
+                "No changes made."
+            )
+        else:
+            print(
+                "\nSupported update: Wi-Fi SSID and local .test DNS alias only."
+            )
+            print(
+                "The existing uplink, gateway, DHCP pool, firewall, "
+                "openNDS and system services remain unchanged."
+            )
+            print(
+                "The Wi-Fi access point and/or DHCP service may restart, "
+                "briefly disconnecting guests."
+            )
+            approved = args.yes
+            if not approved:
+                try:
+                    approved = input(
+                        "Apply these settings to the existing hotspot? [y/N]: "
+                    ).strip().lower() in ("y", "yes")
+                except (EOFError, KeyboardInterrupt):
+                    print("\nCanceled. No changes made.")
+                    return 0
+            if not approved:
+                print("Canceled. No changes made.")
+                return 0
+            try:
+                applied = apply_existing(result)
+            except ApplyError as exc:
+                print(f"Update stopped: {exc}", file=sys.stderr)
+                return 2
+            if applied["changed"]:
+                print("SSID/local DNS update applied and services checked.")
+                print("Backup: " + applied["backup_directory"])
+                print("Note: local DNS mapping does not install a Laravel portal.")
+            else:
+                print(applied["message"])
     return 0
 
 
