@@ -307,6 +307,24 @@ changed by this PR. The remaining steps include a verified network mutator,
 crash-safe receipts, and tested service stop ordering on an isolated host.
 Do not install or enable these draft modules on your workstation.
 
+## Phase 6 service lifecycle safety gate (draft)
+
+The read-only `installer/systemd_lifecycle.py` reviews all seven checked-in
+Techworld systemd units and reports legacy AP stop/prepare paths, boot
+activation risks and a proposed shutdown ordering with AP last. It never
+stops services or deletes interfaces. It explicitly refuses to create a
+live stop plan even when handed an asserted installed-unit review flag.
+
+```bash
+python3 scripts/techworld-service-lifecycle-audit.py
+```
+
+The command intentionally exits nonzero and does not inspect installed
+systemd drop-ins or runtime unit overrides. **Do not use systemctl start,
+stop, enable or restart for the hotspot** until loaded units, ownership-safe
+cleanup, crash recovery and isolated-host tests have been reviewed. The
+existing unit files are unchanged.
+
 ## Offline tests
 
 ```bash
