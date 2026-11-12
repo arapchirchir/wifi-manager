@@ -31,6 +31,8 @@ class FakeRunner:
         if cmd[0] == "systemctl":
             return "inactive\n" if cmd[-1] == self.inactive else "active\n"
         if cmd[0] == "iw":
+            if cmd[-1] == "link":
+                return "Connected to 04:25:c5:9a:77:a0 (on wlp109s0)\n\tSSID: Talai\n"
             if cmd[2] == "ap0":
                 if not self.ap_exists:
                     raise module.upstream.HealthError("No such interface")
