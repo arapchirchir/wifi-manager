@@ -7,6 +7,7 @@ resources created by this attempt. A caller must still hold a process lock,
 persist a crash-recovery journal, and verify the installer ownership manifest.
 """
 from installer import network_transaction, ap_transaction, hostapd_transaction
+from installer.setup_lock import setup_lock
 
 
 class StartupError(RuntimeError):
@@ -21,6 +22,17 @@ TECHWORLD_UNITS = (
 
 def startup(adapter, services, *, receipt_dir, hostapd_path, channel,
             upstream_check, post_check):
+    """Run the coordinated simulation under an exclusive receipt-directory lock."""
+    with setup_lock(receipt_dir):
+        return _startup_unlocked(
+            adapter, services, receipt_dir=receipt_dir,
+            hostapd_path=hostapd_path, channel=channel,
+            upstream_check=upstream_check, post_check=post_check,
+        )
+
+
+def _startup_unlocked(adapter, services, *, receipt_dir, hostapd_path, channel,
+                      upstream_check, post_check):
     """Run a supervised simulation; never touch external host services.
 
     services.state(unit) returns 'inactive' or another state.
