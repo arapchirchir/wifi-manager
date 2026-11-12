@@ -209,8 +209,14 @@ The `installer/restart_decision.py` comparison detects SSID, gateway,
 WAN interface, AP radio, and channel changes. It reports when supervised
 reconfiguration and consent are needed; **it does not perform a restart**.
 
-Remaining work: regulatory-domain/rfkill validation, Internet reachability,
-live transition/restart, locking, crash recovery and end-to-end deployment.
+The read-only plan now verifies the selected PHY is not soft- or hard-blocked
+by rfkill, shows the detected regulatory country (without claiming full
+regulatory compliance), and makes the selected WAN AP channel consistent with
+the resolved AP radio. A blocked or missing PHY rfkill entry causes refusal.
+
+Remaining work: complete regulatory-domain/channel validation, Internet
+reachability, live transition/restart, locking, crash recovery and end-to-end
+deployment.
 The legacy installed scripts are unchanged. Do not enable the hotspot yet.
 
 ## Offline tests
