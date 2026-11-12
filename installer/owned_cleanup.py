@@ -97,7 +97,7 @@ def safe_cleanup(receipt_path, *, execute=False, reader=shell_read, mutator=None
         if kind == "bridge":
             try:
                 members = bridge_members(name, reader)
-            except (OSError, ValueError, TypeError, CleanupError) as exc:
+            except (OSError, ValueError, TypeError, RuntimeError, CleanupError) as exc:
                 result["errors"].append(f"Cannot verify bridge membership: {exc}")
                 break
             if members:
