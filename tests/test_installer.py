@@ -79,18 +79,35 @@ class WizardTests(unittest.TestCase):
         with self.assertRaises(wizard.ConfigurationError):
             wizard.validate_network("10.77.77.1/24", "10.77.77.50", "10.77.78.200")
 
-    def test_wifi_detection_prefers_default_route(self):
-        def fake_output(args):
-            if args[:2] == ["iw", "dev"]:
-                return "phy#0\n\tInterface ap0\n\t\ttype AP\n\tInterface wlp109s0\n\t\ttype managed\n"
-            return "default via 192.168.1.1 dev wlp109s0 proto dhcp\n"
-        with patch.object(wizard, "output", side_effect=fake_output):
-            self.assertEqual(wizard.detected_uplink(), "wlp109s0")
-
-    def test_noninteractive_cli_is_plan_only(self):
+    def test_wizard_auto_detected_defaults(self):
+        detected = {
+            "uplink": "wlan0", "channel": 11, "phy": "phy0",
+            "gateway": "10.77.78.1/24",
+            "dhcp_start": "10.77.78.50",
+            "dhcp_end": "10.77.78.200",
+            "source": "automatically selected unused private subnet",
+            "occupied_networks": [],
+            "preserve_existing": False,
+        }
         with patch.object(wizard, "get_preflight", return_value={"status": "clean"}):
-            with patch.object(wizard, "detected_uplink", return_value="wlan0"):
+            with patch.object(wizard, "discover", return_value=detected):
                 self.assertEqual(wizard.main(["--non-interactive"]), 0)
+
+    def test_unknown_uplink_override_fails_closed(self):
+        detected = {
+            "uplink": "wlan0", "channel": 11, "phy": "phy0",
+            "gateway": "10.77.78.1/24",
+            "dhcp_start": "10.77.78.50",
+            "dhcp_end": "10.77.78.200",
+            "source": "automatically selected unused private subnet",
+            "occupied_networks": [],
+            "preserve_existing": False,
+        }
+        with patch.object(wizard, "get_preflight", return_value={"status": "clean"}):
+            with patch.object(wizard, "discover", return_value=detected):
+                self.assertEqual(
+                    wizard.main(["--non-interactive", "--uplink", "doesnotexist"]), 2
+                )
 
 
 if __name__ == "__main__":
