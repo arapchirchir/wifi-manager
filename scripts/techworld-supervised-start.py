@@ -61,9 +61,12 @@ def supervise(uplink, *, execute=False, consent=None, runner=upstream.run_comman
         result["errors"].append("Upstream is unhealthy before startup")
         return result
     try:
-        existing = systemctl("is-active", HOTSPOT, runner)
+        existing = runner(["systemctl", "show", "-p", "ActiveState", "--value", HOTSPOT]).strip()
     except upstream.HealthError as exc:
         result["errors"].append(f"Cannot inspect hotspot state: {exc}")
+        return result
+    if existing not in ("active", "inactive", "failed"):
+        result["errors"].append(f"Unrecognized hotspot state: {existing}")
         return result
     if existing == "active":
         result["errors"].append(
