@@ -109,7 +109,8 @@ def _startup_unlocked(adapter, services, *, receipt_dir, hostapd_path, channel,
 
         # Restore config only when it can be proven we installed its current
         # contents and original bytes are known. Do not overwrite other edits.
-        # Keep the last known configuration if service shutdown is uncertain.\n        if not errors and setup is not None and setup["config_modified"]:
+        # Keep the last known configuration if service shutdown is uncertain.
+        if not errors and setup is not None and setup["config_modified"]:
             try:
                 changed = hostapd_transaction.render_channel(original, channel)
                 if changed != hostapd_transaction._read_regular(hostapd_path)[0]:
