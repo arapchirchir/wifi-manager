@@ -31,7 +31,7 @@ class GuardTests(unittest.TestCase):
             )
             ip.write_text(
                 "#!/bin/sh\n"
-                + (f'if [ "$1 $2 $3 $4" = "link show {existing_interface}" ]; then exit 0; fi\n'
+                + (f'if [ "$1 $2 $3" = "link show {existing_interface}" ]; then exit 0; fi\n'
                    if existing_interface else "")
                 + 'if [ "$1 $2 $3 $4 $5 $6" = "-4 route show default dev wlp109s0" ]; then\n'
                 + ("  echo 'default via 192.168.100.1 dev wlp109s0'\n" if default_route else "  :\n")
