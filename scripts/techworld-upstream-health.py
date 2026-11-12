@@ -55,9 +55,14 @@ def inspect(uplink, expected_channel=None, runner=run_command):
             result["connected"] = True
 
         iw_info = runner(["iw", "dev", uplink, "info"])
-        ssid_match = re.search(r"^\s*ssid\s+(.+)$", iw_info, re.MULTILINE)
+        # iw dev IFACE info does not always expose the SSID after roaming.
+        # iw dev IFACE link is authoritative about an actual association,
+        # and works even when the NetworkManager profile has a different name.
+        iw_link = runner(["iw", "dev", uplink, "link"])
+        associated = re.search(r"(?m)^Connected to [0-9a-fA-F:]{17}\b", iw_link)
+        ssid_match = re.search(r"(?m)^\s*SSID:\s*(.+?)\s*$", iw_link)
         channel_match = re.search(r"^\s*channel\s+(\d+)\b", iw_info, re.MULTILINE)
-        if ssid_match:
+        if associated and ssid_match:
             result["ssid"] = ssid_match.group(1)
         else:
             result["errors"].append("No upstream Wi-Fi association")
