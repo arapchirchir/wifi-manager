@@ -70,7 +70,10 @@ def inspect(uplink, expected_channel=None, runner=run_command):
                 f"Upstream channel changed: expected {expected_channel}, got {result['channel']}"
             )
 
-        route_text = runner(["ip", "-j", "-4", "route", "show", "default", "dev", uplink])
+        # Query all default routes instead of filtering by device: some
+        # iproute2 versions omit "dev" from JSON after a "dev IFACE"
+        # filter. This form preserves the device for explicit verification.
+        route_text = runner(["ip", "-j", "-4", "route", "show", "default"])
         routes = json.loads(route_text)
         valid = []
         for route in routes:
