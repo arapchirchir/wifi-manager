@@ -136,6 +136,21 @@ new ownership receipts and the installed cleanup script remains unchanged.
 Do not deploy the scripts or start the hotspot until creation receipts,
 partial-failure cleanup, and rollback behavior are integrated and tested.
 
+## AP creation transaction (development, not deployed)
+
+`installer/ap_transaction.py` now records each newly created AP or bridge
+interface in a private, exclusive ownership receipt and rolls back created
+interfaces in reverse order after a failed transaction. It checks both Linux
+interface index and interface type at cleanup. If AP identity is uncertain,
+the bridge is retained rather than deleted.
+
+This module is exercised with fake network adapters only. It does **not**
+yet replace the legacy shell preparation/cleanup scripts, and a crash
+between interface creation and writing its receipt still requires a recovery
+design. A production adapter, process-level transaction lock, dynamic
+uplink configuration, and reliable hostapd rollback must be in place before
+supervised live startup. Do not copy this branch's scripts to the host yet.
+
 ## Offline tests
 
 ```bash
