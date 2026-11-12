@@ -242,6 +242,24 @@ not guaranteed, and there is no durable post-crash recovery journal or
 actual upstream Internet reachability verification. Do not execute live
 startup, enable the installed hotspot, or merge this as production-ready.
 
+## Production safety gate (draft PR #4)
+
+The receipt-checked cleanup now refuses to delete `br-techworld` if **any**
+interface is still attached to it, including interfaces outside Techworld's
+ownership records. Link inventory errors also cause refusal rather than
+deletion. This is exercised with simulated link inventories.
+
+`installer/deployment_audit.py` provides a read-only static source audit of
+the repository's legacy AP service and shell cleanup paths. Those paths
+currently include name-only interface deletion and are **not** safe to deploy
+on the workstation. The audit intentionally never declares production
+readiness, even if no static patterns are detected.
+
+The new checks are offline protection only. They do not replace installed
+systemd units, supply a production network mutator, persist a crash recovery
+journal or repair partially created interfaces after power loss. **Do not
+activate the hotspot or deploy the legacy cleanup scripts based on this PR.**
+
 ## Offline tests
 
 ```bash
