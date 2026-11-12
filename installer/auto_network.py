@@ -53,18 +53,56 @@ def parse_managed_interfaces(iw_output):
 
 
 def supports_sta_ap(phy_info):
-    if not re.search(r"Supported interface modes:[\s\S]*?\*\s+AP\b", phy_info):
-        return False
-    # A station+AP combination must be advertised by the same radio.
-    # This is necessary but not sufficient: the channel must also be usable.
-    for line in phy_info.splitlines():
-        if ("#{" in line and "managed" in line and
-                re.search(r"\bAP\b", line) and "total" in line):
-            match = re.search(r"total\s*<=\s*(\d+)", line)
-            if match and int(match.group(1)) >= 2:
-                return True
-    return False
+    """Interpret iw's supported-mode and multi-line interface combinations.
 
+    Combinations often wrap after the managed/AP groups, with total <= 2
+    on a following line. The entire combination must be considered rather
+    than looking for all fields on a single line.
+    """
+    mode_section = phy_info.split("Supported interface modes:", 1)
+    if len(mode_section) < 2:
+        return False
+    # The explicit AP mode must be present, not just the token in a
+    # combination or in extended feature descriptions.
+    modes = mode_section[1].split("valid interface combinations:", 1)[0]
+    if not re.search(r"(?m)^\s*\*\s+AP\s*$", modes):
+        return False
+
+    sections = phy_info.split("valid interface combinations:", 1)
+    if len(sections) < 2:
+        return False
+
+    # Each '*' starts a new combination. Follow-on lines belong to it.
+    combinations = re.split(r"(?m)^\s*\*\s+", sections[1])
+    for item in combinations[1:]:
+        combo = " ".join(item.split())
+        total = re.search(r"\btotal\s*<=\s*(\d+)", combo)
+        channels = re.search(r"#channels\s*<=\s*(\d+)", combo)
+        if not total or int(total.group(1)) < 2:
+            continue
+        if channels and int(channels.group(1)) < 1:
+            continue
+        groups = []
+        for modes_text, count in re.findall(
+            r"#\{\s*([^}]+?)\s*\}\s*<=\s*(\d+)", combo
+        ):
+            modes_in_group = {
+                mode.strip() for mode in modes_text.split(",")
+            }
+            groups.append((modes_in_group, int(count)))
+
+        if not (any("managed" in ms and n >= 1 for ms, n in groups)
+                and any("AP" in ms and n >= 1 for ms, n in groups)):
+            continue
+
+        # Reject mutually exclusive managed/AP groups with only one slot.
+        if any(
+            "managed" in ms and "AP" in ms and n < 2
+            for ms, n in groups
+        ):
+            continue
+        return True
+    return False
 
 def parse_json_output(args, runner):
     try:
