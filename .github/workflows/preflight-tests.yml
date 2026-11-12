@@ -1,0 +1,19 @@
+name: Preflight safety checks
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+permissions:
+  contents: read
+
+jobs:
+  preflight-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Python syntax
+        run: python3 -m py_compile scripts/techworld-preflight.py tests/test_preflight.py
+      - name: Run offline preflight unit tests
+        run: python3 -m unittest discover -s tests -v

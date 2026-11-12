@@ -30,3 +30,7 @@
 # Editor files
 .vscode/
 .idea/
+
+# Python bytecode created by local tests
+__pycache__/
+*.py[cod]

@@ -6,13 +6,112 @@ AP="ap0"
 BRIDGE="br-techworld"
 GATEWAY="10.77.77.1/24"
 
-# Verify upstream channel
-CHANNEL=$(iw dev "$UPLINK" info | awk '$1=="channel" {print $2; exit}')
-
-if [[ "$CHANNEL" != "6" ]]; then
-    echo "ERROR: Upstream Wi-Fi must be on channel 6."
+# Ensure the upstream is a NetworkManager-managed active connection and
+# owns a default IPv4 route. These checks do not initiate traffic or modify
+# Wi-Fi, DNS, firewall rules, or saved connection profiles.
+NM_STATE=$(nmcli -g GENERAL.STATE device show "$UPLINK" 2>/dev/null || true)
+if [[ ! "$NM_STATE" =~ ^100[[:space:]]*\(connected\) ]]; then
+    echo "ERROR: Upstream $UPLINK is not connected in NetworkManager (${NM_STATE:-unknown})." >&2
     exit 1
 fi
+
+UPLINK_ROUTE=$(ip -4 route show default dev "$UPLINK")
+if [[ -z "$UPLINK_ROUTE" ]]; then
+    echo "ERROR: No IPv4 default route through upstream $UPLINK; refusing hotspot startup." >&2
+    exit 1
+fi
+
+# Do not infer internet availability from the default route alone.
+# Follow-up post-start checks must verify connectivity and fail safely.
+
+# Until creation receipts are persisted and verified, refuse to adopt or
+# modify interfaces already using Techworld's reserved names. This check must
+# precede any hostapd writes or interface changes.
+if ip link show "$BRIDGE" >/dev/null 2>&1; then
+    echo "ERROR: $BRIDGE already exists; refusing to adopt an unverified bridge." >&2
+    exit 1
+fi
+if ip link show "$AP" >/dev/null 2>&1; then
+    echo "ERROR: $AP already exists; refusing to adopt an unverified AP." >&2
+    exit 1
+fi
+
+# Validate the actual upstream channel BEFORE touching any interface.
+# Both managed STA and AP must share one channel on single-channel radios.
+HOSTAPD_CONF="${TECHWORLD_HOSTAPD_CONF:-/etc/hostapd/techworld.conf}"
+UPLINK_INFO=$(iw dev "$UPLINK" info)
+UPLINK_LINK=$(iw dev "$UPLINK" link)
+CONNECTED_SSID=$(sed -n 's/^[[:space:]]*SSID: //p' <<< "$UPLINK_LINK" | head -n 1)
+CHANNEL=$(awk '$1=="channel" {print $2; exit}' <<< "$UPLINK_INFO")
+
+if ! grep -Eq '^Connected to ([[:xdigit:]]{2}:){5}[[:xdigit:]]{2}' <<< "$UPLINK_LINK"; then
+    echo "ERROR: No active upstream Wi-Fi association on $UPLINK." >&2
+    exit 1
+fi
+
+if [[ -z "$CONNECTED_SSID" || ! "$CHANNEL" =~ ^[0-9]+$ ]]; then
+    echo "ERROR: Upstream Wi-Fi is not associated or its channel is unknown." >&2
+    exit 1
+fi
+
+if [[ ! -f "$HOSTAPD_CONF" ]]; then
+    echo "ERROR: Hostapd configuration is missing: $HOSTAPD_CONF" >&2
+    exit 1
+fi
+
+# Safely synchronize a dedicated hostapd config before touching the AP.
+# Limit this legacy hw_mode=g setup to non-DFS 2.4 GHz channels. A future
+# installer can handle 5 GHz, country rules, and hw_mode transitions.
+if (( CHANNEL < 1 || CHANNEL > 11 )); then
+    echo "ERROR: Channel $CHANNEL is outside the supported 2.4 GHz channels 1-11 for this legacy configuration." >&2
+    exit 1
+fi
+
+if [[ -L "$HOSTAPD_CONF" || ! -f "$HOSTAPD_CONF" ]]; then
+    echo "ERROR: Hostapd configuration must be a regular non-symlink file." >&2
+    exit 1
+fi
+
+HOSTAPD_INTERFACE=$(awk -F= '$1 == "interface" {print $2}' "$HOSTAPD_CONF")
+HOSTAPD_MODE=$(awk -F= '$1 == "hw_mode" {print $2}' "$HOSTAPD_CONF")
+CONFIG_CHANNEL=$(awk -F= '$1 == "channel" {print $2}' "$HOSTAPD_CONF")
+CHANNEL_COUNT=$(grep -Ec '^channel=' "$HOSTAPD_CONF" || true)
+if [[ "$HOSTAPD_INTERFACE" != "$AP" || "$HOSTAPD_MODE" != "g" ||
+      "$CHANNEL_COUNT" != "1" || ! "$CONFIG_CHANNEL" =~ ^[0-9]+$ ]]; then
+    echo "ERROR: Unsupported or ambiguous hostapd AP configuration; no changes made." >&2
+    exit 1
+fi
+
+if [[ "$CONFIG_CHANNEL" != "$CHANNEL" ]]; then
+    # Render the replacement first and stage it beside the original. This
+    # keeps the update atomic and preserves owner/permissions on replacement.
+    BACKUP="${HOSTAPD_CONF}.before-channel-sync"
+    if [[ -L "$BACKUP" ]]; then
+        echo "ERROR: Refusing symlink backup path: $BACKUP" >&2
+        exit 1
+    fi
+    TEMP_CONF=$(mktemp "${HOSTAPD_CONF}.tmp.XXXXXXXX")
+    trap 'rm -f "$TEMP_CONF"' EXIT
+    awk -v channel="$CHANNEL" '
+      /^channel=/ { print "channel=" channel; next }
+      { print }
+    ' "$HOSTAPD_CONF" > "$TEMP_CONF"
+    chmod --reference="$HOSTAPD_CONF" "$TEMP_CONF"
+    chown --reference="$HOSTAPD_CONF" "$TEMP_CONF"
+    cp -p -- "$HOSTAPD_CONF" "$BACKUP"
+    # A moved upstream channel is possible while preparing. Fail closed if it
+    # changes again, rather than touching AP or bridge interfaces.
+    LATEST_CHANNEL=$(iw dev "$UPLINK" info | awk '$1=="channel" {print $2; exit}')
+    if [[ "$LATEST_CHANNEL" != "$CHANNEL" ]]; then
+        echo "ERROR: Upstream channel changed during preparation; no AP changes made." >&2
+        exit 1
+    fi
+    mv -f -- "$TEMP_CONF" "$HOSTAPD_CONF"
+    trap - EXIT
+    echo "Synchronized dedicated hostapd channel: $CONFIG_CHANNEL -> $CHANNEL."
+fi
+
+echo "Verified upstream SSID '$CONNECTED_SSID' on channel $CHANNEL; AP channel matches."
 
 # Create the Linux bridge if missing
 if ! ip link show "$BRIDGE" >/dev/null 2>&1; then
