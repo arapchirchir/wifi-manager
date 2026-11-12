@@ -131,6 +131,51 @@ class CleanupTests(unittest.TestCase):
                             for error in result["errors"]))
         self.assertIn("br-techworld", net.links)
 
+    def test_duplicate_link_name_blocks_cleanup(self):
+        net = FakeNetwork()
+        def reader(command):
+            if command == ["ip", "-j", "-d", "link", "show"]:
+                links = list(net.links.values())
+                return json.dumps(links + [dict(links[0], ifindex=900)])
+            return net.read(command)
+        with self.assertRaisesRegex(RuntimeError, "Duplicate interface identity"):
+            safe_cleanup(self.receipt, execute=True, reader=reader, mutator=net.mutate)
+        self.assertEqual(net.deleted, [])
+
+    def test_duplicate_ifindex_blocks_cleanup(self):
+        net = FakeNetwork()
+        net.links["br-techworld"]["ifindex"] = 101
+        with self.assertRaisesRegex(RuntimeError, "Duplicate interface identity"):
+            safe_cleanup(self.receipt, execute=True, reader=net.read, mutator=net.mutate)
+        self.assertEqual(net.deleted, [])
+
+    def test_malformed_link_inventory_blocks_cleanup(self):
+        net = FakeNetwork()
+        def reader(command):
+            if command == ["ip", "-j", "-d", "link", "show"]:
+                return json.dumps([{"ifname": "ap0", "ifindex": "101"}])
+            return net.read(command)
+        with self.assertRaisesRegex(RuntimeError, "Invalid or incomplete"):
+            safe_cleanup(self.receipt, execute=True, reader=reader, mutator=net.mutate)
+        self.assertEqual(net.deleted, [])
+
+    def test_bridge_missing_in_membership_check_is_retained(self):
+        net = FakeNetwork()
+        # The bridge vanishes in a later inventory. Cleanup must never
+        # invoke its mutator based on a stale name and receipt.
+        iterations = [0]
+        def reader(command):
+            if command == ["ip", "-j", "-d", "link", "show"]:
+                iterations[0] += 1
+                if iterations[0] >= 5:
+                    return json.dumps([x for n, x in net.links.items()
+                                       if n != "br-techworld"])
+            return net.read(command)
+        result = safe_cleanup(self.receipt, execute=True,
+                              reader=reader, mutator=net.mutate)
+        self.assertTrue(result["errors"])
+        self.assertFalse(any(name == "br-techworld" for name, _, _ in net.deleted))
+
     def test_observation_detects_bridge_and_ap(self):
         net = FakeNetwork()
         result = observe(["ap0", "br-techworld"], reader=net.read)
