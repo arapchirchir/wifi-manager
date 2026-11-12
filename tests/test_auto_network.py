@@ -74,6 +74,39 @@ class DetectionTests(unittest.TestCase):
         with self.assertRaises(network.DiscoveryError):
             network.active_uplink(FakeNetwork(phy=PHY_BAD))
 
+    def test_multiline_managed_ap_combination(self):
+        phy = """Supported interface modes:
+     * managed
+     * AP
+valid interface combinations:
+     * #{ managed } <= 1, #{ AP, P2P-client, P2P-GO } <= 1,
+       total <= 2, #channels <= 1
+"""
+        self.assertTrue(network.supports_sta_ap(phy))
+        self.assertEqual(network.active_uplink(FakeNetwork(phy=phy))["channel"], 6)
+
+    def test_disjoint_interface_modes_do_not_imply_concurrency(self):
+        phy = """Supported interface modes:
+     * managed
+     * AP
+valid interface combinations:
+     * #{ managed } <= 1,
+       total <= 1, #channels <= 1
+     * #{ AP } <= 1,
+       total <= 1, #channels <= 1
+"""
+        self.assertFalse(network.supports_sta_ap(phy))
+
+    def test_same_group_one_slot_rejected(self):
+        phy = """Supported interface modes:
+     * managed
+     * AP
+valid interface combinations:
+     * #{ managed, AP } <= 1, #{ P2P-client } <= 1,
+       total <= 2, #channels <= 1
+"""
+        self.assertFalse(network.supports_sta_ap(phy))
+
     def test_first_unused_subnet_selected(self):
         fake = FakeNetwork(routes=[
             {"dst": "10.77.77.0/24", "dev": "docker0"},
