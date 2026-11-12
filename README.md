@@ -103,6 +103,26 @@ Until the protected deployment and rollback flow is finished, do not start
 the existing hotspot merely to run this checker. The script is not connected
 to systemd yet, and a healthy result would not prove external Internet access.
 
+## Experimental supervised startup (not deployed)
+
+`scripts/techworld-supervised-start.py` now provides a **read-only default**
+startup plan and a separate explicit-consent path. It verifies the upstream
+connection before requesting a hotspot start, checks the hotspot afterward,
+and attempts to stop `techworld-hotspot` if the startup fails. It never
+issues changes to NetworkManager profiles or restarts shared DNS services.
+
+```bash
+python3 scripts/techworld-supervised-start.py --uplink wlp109s0 --json
+```
+
+**Do not use `--execute` on the host yet.** This is development code that
+has only been tested with mocked systemd and Wi-Fi calls. The full rollback
+must also account for child services left active after partially failed
+systemd transactions, preserve the upstream association across AP teardown,
+and handle connectivity recovery without losing the host's internet access.
+It is not yet integrated with the installer or systemd units. Do not equate
+service `active` status with proven internet reachability.
+
 ## Offline tests
 
 ```bash
