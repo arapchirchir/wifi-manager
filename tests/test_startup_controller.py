@@ -5,6 +5,7 @@ import tempfile
 import unittest
 
 from installer.startup_controller import startup, StartupError, TECHWORLD_UNITS
+from installer.recovery_journal import NAME, read_journal, begin_journal
 
 
 CONF = b"interface=ap0\nssid=Techworld-WiFi\nhw_mode=g\nchannel=6\n"
@@ -101,6 +102,34 @@ class StartTests(unittest.TestCase):
         self.assertFalse(result["restart_safe"])
         self.assertEqual(self.services.calls, [("start", "techworld-hotspot")])
         self.assertIn(b"channel=11", self.config.read_bytes())
+
+    def test_success_records_durable_active_review_marker(self):
+        report = self.run_start()
+        self.assertTrue(report["started"])
+        self.assertEqual(report["journal_state"], "active_needs_review")
+        self.assertEqual(read_journal(self.receipts)["state"], "active_needs_review")
+
+    def test_failed_start_retains_durable_failure_marker(self):
+        with self.assertRaises(StartupError):
+            self.run_start(post_check=lambda: False)
+        self.assertEqual(read_journal(self.receipts)["state"], "failed_needs_review")
+
+    def test_crashed_pending_marker_blocks_without_network_changes(self):
+        begin_journal(self.receipts, 11)
+        with self.assertRaisesRegex(StartupError, "recovery journal"):
+            self.run_start()
+        self.assertEqual(self.network.calls, [])
+        self.assertEqual(self.services.calls, [])
+        self.assertEqual(self.config.read_bytes(), CONF)
+
+    def test_completed_old_journal_blocks_restart(self):
+        self.run_start()
+        initial_network_ops = list(self.network.calls)
+        initial_service_ops = list(self.services.calls)
+        with self.assertRaises(StartupError):
+            self.run_start()
+        self.assertEqual(self.network.calls, initial_network_ops)
+        self.assertEqual(self.services.calls, initial_service_ops)
 
     def test_failed_postcheck_restores_services_config_and_interfaces(self):
         with self.assertRaisesRegex(StartupError, "recovery completed"):

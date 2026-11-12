@@ -8,6 +8,7 @@ persist a crash-recovery journal, and verify the installer ownership manifest.
 """
 from installer import network_transaction, ap_transaction, hostapd_transaction
 from installer.setup_lock import setup_lock
+from installer.recovery_journal import begin_journal, mark_journal, JournalError
 
 
 class StartupError(RuntimeError):
@@ -57,6 +58,13 @@ def _startup_unlocked(adapter, services, *, receipt_dir, hostapd_path, channel,
         raise StartupError("Desired AP channel disagrees with verified upstream")
 
     original = hostapd_transaction._read_regular(hostapd_path)[0]
+    # Persist an intent record before ANY potentially mutating operation.
+    # Existing, malformed, or failed-run journals must block a new startup.
+    try:
+        begin_journal(receipt_dir, channel)
+    except (JournalError, OSError, ValueError) as exc:
+        raise StartupError(f"Startup blocked by recovery journal: {exc}") from exc
+
     setup = None
     start_attempted = False
     errors = []
@@ -73,8 +81,10 @@ def _startup_unlocked(adapter, services, *, receipt_dir, hostapd_path, channel,
             raise StartupError("Post-start verification failed")
         if upstream_check() != before:
             raise StartupError("Upstream changed during post-start verification")
+        mark_journal(receipt_dir, "active_needs_review")
         return {"started": True, "upstream": before,
                 "services": {"techworld-hotspot": services.state("techworld-hotspot")},
+                "journal_state": "active_needs_review",
                 "restart_safe": False}
     except Exception as exc:
         # If start may have partially run, stop the Techworld parent first,
@@ -120,6 +130,10 @@ def _startup_unlocked(adapter, services, *, receipt_dir, hostapd_path, channel,
             except Exception as config_exc:
                 errors.append(f"Cannot restore hostapd: {config_exc}")
 
+        try:
+            mark_journal(receipt_dir, "failed_needs_review")
+        except Exception as journal_exc:
+            errors.append(f"Journal could not be finalized: {journal_exc}")
         if errors:
             raise StartupError(f"Startup failed: {exc}; recovery incomplete: {errors}") from exc
-        raise StartupError(f"Startup failed and recovery completed: {exc}") from exc
+        raise StartupError(f"Startup failed and recovery completed; operator review still required: {exc}") from exc

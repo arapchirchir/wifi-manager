@@ -260,6 +260,29 @@ systemd units, supply a production network mutator, persist a crash recovery
 journal or repair partially created interfaces after power loss. **Do not
 activate the hotspot or deploy the legacy cleanup scripts based on this PR.**
 
+## Durable recovery marker (development)
+
+`installer/recovery_journal.py` writes a private, fsynced
+`startup-journal.json` **before** the injected startup controller can change
+network configuration or create interfaces. The record remains present after
+both success and failure. A pending record after a crash, or a completed
+record from an earlier run, blocks further startup until a separate,
+ownership-aware manual review workflow is built. The marker cannot authorize
+deletion or service changes. It deliberately does not contain passwords.
+
+Inspect a known private directory without changing services:
+
+```bash
+python3 scripts/techworld-recovery-status.py --journal-dir /path/to/private/receipt-dir --json
+```
+
+This is a development-only feature. The current installed systemd units do
+**not** use this journal, and no reviewed process for clearing it exists.
+The marker cannot make interface creation/receipt persistence atomic and
+does not enable automatic crash recovery. The existing legacy cleanup
+scripts are still unsafe and must not be deployed. Do not start the
+hotspot based on this marker or on offline test results.
+
 ## Offline tests
 
 ```bash
