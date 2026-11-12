@@ -25,27 +25,37 @@ class GuardTests(unittest.TestCase):
             env = dict(os.environ)
             env["PATH"] = str(root) + ":" + env.get("PATH", "")
             env["TECHWORLD_HOSTAPD_CONF"] = str(cfg)
-            return subprocess.run(["bash", str(SCRIPT)], env=env,
+            proc = subprocess.run(["bash", str(SCRIPT)], env=env,
                                   text=True, capture_output=True, timeout=8, check=False)
+            return proc, cfg.read_text(), (root / "hostapd.conf.before-channel-sync").exists()
 
-    def test_mismatch_does_not_touch_interface(self):
-        p = self.run_guard(11, 6)
-        self.assertEqual(p.returncode, 1)
-        self.assertIn("channel is 11", p.stderr)
-        self.assertNotIn("MOCK IP CALLED", p.stderr)
+    def test_channel_syncs_before_interface_setup(self):
+        p, config, backed_up = self.run_guard(11, 6)
+        self.assertEqual(p.returncode, 99)
+        self.assertIn("MOCK IP CALLED", p.stderr)
+        self.assertIn("channel=11", config)
+        self.assertTrue(backed_up)
 
     def test_absent_association_does_not_touch_interface(self):
-        p = self.run_guard(11, 11, associated=False)
+        p, config, backed_up = self.run_guard(11, 11, associated=False)
         self.assertEqual(p.returncode, 1)
         self.assertIn("not associated", p.stderr)
 
     def test_valid_channel_eleven_passes_guard(self):
-        p = self.run_guard(11, 11)
+        p, config, backed_up = self.run_guard(11, 11)
+        self.assertFalse(backed_up)
         self.assertEqual(p.returncode, 99)
         self.assertIn("MOCK IP CALLED", p.stderr)
 
+    def test_unhandled_channel_fails_before_touching_interface(self):
+        p, config, backed_up = self.run_guard(36, 6)
+        self.assertEqual(p.returncode, 1)
+        self.assertIn("channel=6", config)
+        self.assertFalse(backed_up)
+        self.assertNotIn("MOCK IP CALLED", p.stderr)
+
     def test_non_numeric_channel_is_rejected(self):
-        p = self.run_guard("unknown", "unknown")
+        p, config, backed_up = self.run_guard("unknown", "unknown")
         self.assertEqual(p.returncode, 1)
 
 if __name__ == "__main__":
