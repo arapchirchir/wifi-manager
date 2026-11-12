@@ -195,6 +195,24 @@ live Wi-Fi to Ethernet transition, restart, crash recovery and installation
 integration are **not implemented**. Keep GitHub issue #2 open and don't
 start the hotspot based on this read-only selection alone.
 
+## Automatic WAN and AP radio planning (Issue #2, read-only)
+
+Use `python3 scripts/techworld-network-plan.py --json` to inspect the
+current WAN default route plus available Wi-Fi PHYs, and choose a compatible
+legacy 2.4 GHz AP channel where the advertised radio capabilities permit.
+For a single radio, the AP channel must follow the associated Wi-Fi uplink.
+For Ethernet WAN, AP-capable idle Wi-Fi hardware must be available. Ambiguous
+radio choices fail closed rather than guessing; `--ap-radio phyN` can
+resolve a choice after inspection.
+
+The `installer/restart_decision.py` comparison detects SSID, gateway,
+WAN interface, AP radio, and channel changes. It reports when supervised
+reconfiguration and consent are needed; **it does not perform a restart**.
+
+Remaining work: regulatory-domain/rfkill validation, Internet reachability,
+live transition/restart, locking, crash recovery and end-to-end deployment.
+The legacy installed scripts are unchanged. Do not enable the hotspot yet.
+
 ## Offline tests
 
 ```bash
