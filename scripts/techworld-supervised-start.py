@@ -41,7 +41,13 @@ def unit_state(service, runner):
 
 def stop_owned_after_failed_start(runner, errors):
     """Stop only Techworld units and verify that no owned service remains active."""
-    for service in ALL_UNITS:
+    # Always request a stop of the parent after a failed start attempt:
+    # it may be marked inactive even while systemd is still processing units.
+    try:
+        systemctl("stop", HOTSPOT, runner)
+    except upstream.HealthError as exc:
+        errors.append(f"Cannot stop {HOTSPOT}: {exc}")
+    for service in OWNED_UNITS:
         try:
             state = unit_state(service, runner)
             if state not in ("inactive", "failed"):
