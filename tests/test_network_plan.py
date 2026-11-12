@@ -36,6 +36,8 @@ class PlanTests(unittest.TestCase):
                 "Interface wlp109s0\nwiphy 0\nchannel 11 (2462 MHz)\n",
             ("iw", "dev"): "phy#0\n Interface wlp109s0\n type managed\n",
             ("iw", "phy", "phy0", "info"): PHY,
+            ("rfkill", "list"): "1: hci0: Bluetooth\n Soft blocked: no\n Hard blocked: no\n2: phy0: Wireless LAN\n Soft blocked: no\n Hard blocked: no\n",
+            ("iw", "reg", "get"): "global\ncountry KE: DFS-UNSET\n",
         }
 
         def reader(cmd):
@@ -47,7 +49,12 @@ class PlanTests(unittest.TestCase):
         self.assertEqual(report["ap_radio"]["channel"], 11)
         self.assertEqual(report["ap_radio"]["reason"], "shared-radio-wifi")
         self.assertFalse(report["restart_safe"])
-        self.assertEqual({cmd[0] for cmd in calls}, {"ip", "nmcli", "iw"})
+        self.assertEqual(report["selected"]["ap_channel"], 11)
+        self.assertEqual(report["candidates"][0]["ap_channel"], 11)
+        self.assertFalse(report["rfkill"]["soft_blocked"])
+        self.assertEqual(report["regulatory"]["countries"], ["KE"])
+        self.assertFalse(report["regulatory"]["verified"])
+        self.assertEqual({cmd[0] for cmd in calls}, {"ip", "nmcli", "iw", "rfkill"})
 
 
 if __name__ == "__main__":
