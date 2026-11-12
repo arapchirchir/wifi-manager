@@ -5,6 +5,7 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "techworld-preflight.py"
 spec = importlib.util.spec_from_file_location("techworld_preflight", SCRIPT)
@@ -38,12 +39,20 @@ class FakeHost:
 
 
 class PreflightTests(unittest.TestCase):
-    def check_host(self, fake, manifest=None):
+    def check_host(self, fake, manifest=None, existing_file=False):
+        # Fully isolate preflight from the developer's real /etc and /usr/local.
+        # A machine that already runs Techworld-WiFi must not affect tests
+        # pretending to inspect a clean, newly installed Ubuntu system.
         with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "install-manifest.json"
+            root = Path(directory)
+            path = root / "install-manifest.json"
             if manifest is not None:
                 path.write_text(json.dumps(manifest))
-            return preflight.inspect(manifest_path=path, runner=fake)
+            files = [root / "hostapd.conf", root / "dnsmasq.conf"]
+            if existing_file:
+                files[0].write_text("ssid=Techworld-WiFi\n")
+            with patch.object(preflight, "FILES", tuple(map(str, files))):
+                return preflight.inspect(manifest_path=path, runner=fake)
 
     def test_clean_machine_with_shared_dnsmasq(self):
         fake = FakeHost(installed={"dnsmasq.service", "NetworkManager.service"})
@@ -51,6 +60,11 @@ class PreflightTests(unittest.TestCase):
         self.assertEqual(report["status"], "clean")
         self.assertFalse(report["requires_explicit_confirmation"])
         self.assertEqual(report["actions_performed"], [])
+
+    def test_unrecorded_config_file_requires_adoption(self):
+        report = self.check_host(FakeHost(), existing_file=True)
+        self.assertEqual(report["status"], "adoption_required")
+        self.assertTrue(report["existing_files"])
 
     def test_existing_unrecorded_installation_requires_adoption(self):
         fake = FakeHost(installed={"techworld-hotspot.service", "opennds.service"},
