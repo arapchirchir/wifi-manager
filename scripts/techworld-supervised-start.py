@@ -29,6 +29,37 @@ upstream = load("techworld_upstream_probe", "techworld-upstream-health.py")
 post_start = load("techworld_poststart_probe", "techworld-post-start-health.py")
 
 HOTSPOT = "techworld-hotspot"
+# Only explicitly owned Techworld units; never touch shared dnsmasq or NM.
+OWNED_UNITS = ("opennds", "techworld-hostapd", "techworld-dhcp",
+               "techworld-isolation", "techworld-nat", "techworld-ap")
+ALL_UNITS = (HOTSPOT,) + OWNED_UNITS
+
+
+def unit_state(service, runner):
+    return runner(["systemctl", "show", "-p", "ActiveState", "--value", service]).strip()
+
+
+def stop_owned_after_failed_start(runner, errors):
+    """Stop only Techworld units and verify that no owned service remains active."""
+    for service in ALL_UNITS:
+        try:
+            state = unit_state(service, runner)
+            if state not in ("inactive", "failed"):
+                systemctl("stop", service, runner)
+        except upstream.HealthError as exc:
+            errors.append(f"Cannot clean up {service}: {exc}")
+    remaining = {}
+    for service in ALL_UNITS:
+        try:
+            state = unit_state(service, runner)
+            if state not in ("inactive", "failed"):
+                remaining[service] = state
+        except upstream.HealthError as exc:
+            remaining[service] = "unverifiable"
+            errors.append(f"Cannot verify cleanup of {service}: {exc}")
+    if remaining:
+        errors.append(f"Techworld units still active or unverifiable: {remaining}")
+    return remaining
 CONSENT = "START TECHWORLD HOTSPOT"
 
 
@@ -60,18 +91,15 @@ def supervise(uplink, *, execute=False, consent=None, runner=upstream.run_comman
     if not pre["healthy"]:
         result["errors"].append("Upstream is unhealthy before startup")
         return result
+    # Refuse to adopt pre-existing units; rollback must not stop others' work.
     try:
-        existing = runner(["systemctl", "show", "-p", "ActiveState", "--value", HOTSPOT]).strip()
+        initial = {service: unit_state(service, runner) for service in ALL_UNITS}
     except upstream.HealthError as exc:
-        result["errors"].append(f"Cannot inspect hotspot state: {exc}")
+        result["errors"].append(f"Cannot inspect Techworld state: {exc}")
         return result
-    if existing not in ("active", "inactive", "failed"):
-        result["errors"].append(f"Unrecognized hotspot state: {existing}")
-        return result
-    if existing == "active":
-        result["errors"].append(
-            "Hotspot is already active; refusing to adopt or stop it"
-        )
+    result["initial_services"] = initial
+    if any(state != "inactive" for state in initial.values()):
+        result["errors"].append("Techworld stack is not fully inactive; refusing startup")
         return result
 
     if not execute:
@@ -115,10 +143,9 @@ def supervise(uplink, *, execute=False, consent=None, runner=upstream.run_comman
     finally:
         if started_command and not result["started"]:
             result["recovery_attempted"] = True
-            try:
-                systemctl("stop", HOTSPOT, runner)
-            except upstream.HealthError as exc:
-                result["errors"].append(f"Failed to stop Techworld hotspot: {exc}")
+            result["remaining_units"] = stop_owned_after_failed_start(
+                runner, result["errors"]
+            )
     return result
 
 
