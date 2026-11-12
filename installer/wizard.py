@@ -12,6 +12,10 @@ import subprocess
 import sys
 from pathlib import Path
 
+# Allow direct execution and importlib-based offline tests.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from auto_network import DiscoveryError, auto_pool, conflicting_network, discover
+
 ROOT = Path(__file__).resolve().parents[1]
 PREFLIGHT = ROOT / "scripts" / "techworld-preflight.py"
 IFNAME = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_.:-]{0,14}\Z")
@@ -20,33 +24,6 @@ LABEL = re.compile(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\Z")
 
 class ConfigurationError(ValueError):
     pass
-
-
-def output(args):
-    try:
-        result = subprocess.run(
-            args, capture_output=True, text=True, timeout=8, check=False
-        )
-        return result.stdout if result.returncode == 0 else ""
-    except (OSError, subprocess.TimeoutExpired):
-        return ""
-
-
-def detected_uplink():
-    """Prefer a managed Wi-Fi adapter carrying the default IPv4 route."""
-    interfaces = []
-    current = None
-    for line in output(["iw", "dev"]).splitlines():
-        match = re.search(r"^\s*Interface\s+(\S+)\s*$", line)
-        if match:
-            current = match.group(1)
-        elif current and re.search(r"^\s*type\s+managed\s*$", line):
-            interfaces.append(current)
-    for line in output(["ip", "-4", "route", "show", "default"]).splitlines():
-        match = re.search(r"\bdev\s+(\S+)", line)
-        if match and match.group(1) in interfaces:
-            return match.group(1)
-    return interfaces[0] if interfaces else ""
 
 
 def validate_ssid(value):
@@ -171,6 +148,7 @@ def main(argv=None):
         description="Techworld-WiFi interactive configuration preview (no installation)"
     )
     parser.add_argument("--non-interactive", action="store_true")
+    parser.add_argument("--advanced", action="store_true", help="Show advanced network overrides")
     parser.add_argument("--json", action="store_true", help="Machine-readable non-interactive preview")
     for flag in ("ssid", "domain", "uplink", "gateway", "dhcp-start", "dhcp-end"):
         parser.add_argument("--" + flag, dest=flag.replace("-", "_"))
@@ -188,14 +166,25 @@ def main(argv=None):
             print("\nTECHWORLD-WIFI | INTERACTIVE INSTALLATION PREVIEW")
             print(f"Existing installation: {preflight.get('status')}")
             print("No services or networking settings will be changed.\n")
+        detected = discover(preflight["status"])
         defaults = {
             "ssid": "Techworld-WiFi",
             "domain": "wireless.test",
-            "uplink": detected_uplink(),
-            "gateway": "10.77.77.1/24",
-            "dhcp_start": "10.77.77.50",
-            "dhcp_end": "10.77.77.200",
+            "uplink": detected["uplink"],
+            "gateway": detected["gateway"],
+            "dhcp_start": detected["dhcp_start"],
+            "dhcp_end": detected["dhcp_end"],
         }
+        if not args.json:
+            print(
+                f"Detected uplink: {detected['uplink']} "
+                f"(channel {detected['channel']}, {detected['phy']})"
+            )
+            print(f"Selected private gateway: {detected['gateway']}")
+            print(f"Gateway selection: {detected['source']}")
+            if not args.advanced:
+                print("Network values are selected automatically. "
+                      "Use --advanced to review overrides.\n")
         labels = {
             "ssid": "Wi-Fi SSID",
             "domain": "Captive portal domain",
@@ -207,11 +196,41 @@ def main(argv=None):
         values = {}
         for key, default in defaults.items():
             given = getattr(args, key)
+            prompt = key in ("ssid", "domain") or args.advanced
             values[key] = given if given is not None else (
-                default if args.non_interactive or args.json else ask(labels[key], default)
+                default if args.non_interactive or args.json or not prompt
+                else ask(labels[key], default)
             )
+
+        # Never accept a plausible but non-existent uplink name as valid.
+        # This preview only supports the verified active Wi-Fi uplink.
+        if values["uplink"] != detected["uplink"]:
+            raise ConfigurationError(
+                f"Uplink {values['uplink']!r} is not the verified active "
+                f"Wi-Fi interface {detected['uplink']!r}"
+            )
+
+        # Advanced gateway choices must be private and non-overlapping.
+        network_overridden = values["gateway"] != detected["gateway"]
+        if network_overridden:
+            conflict = conflicting_network(
+                values["gateway"], detected["occupied_networks"],
+                allow_bridge=False,
+            )
+            if conflict:
+                raise ConfigurationError(
+                    "Gateway overlaps existing routes/interfaces: " + ", ".join(conflict)
+                )
+            # Keep DHCP in sync if only the gateway was overridden.
+            if args.dhcp_start is None and args.dhcp_end is None:
+                values["dhcp_start"], values["dhcp_end"] = auto_pool(values["gateway"])
         result = plan(values, preflight)
-    except (ConfigurationError, EOFError, KeyboardInterrupt) as exc:
+        result["wireless"]["channel"] = detected["channel"]
+        result["wireless"]["radio"] = detected["phy"]
+        result["portal"]["gateway_source"] = (
+            "advanced user override" if network_overridden else detected["source"]
+        )
+    except (ConfigurationError, DiscoveryError, EOFError, KeyboardInterrupt) as exc:
         if args.json:
             print(json.dumps({"mode": "plan-only", "error": str(exc)}))
         else:
@@ -223,9 +242,11 @@ def main(argv=None):
     else:
         print("\n=== INSTALLATION PLAN ===")
         print("SSID:         " + result["wireless"]["ssid"])
-        print("Wi-Fi uplink: " + result["wireless"]["uplink"])
+        print("Wi-Fi uplink: " + result["wireless"]["uplink"] +
+              f" (channel {result['wireless']['channel']})")
         print("Portal:       " + result["portal"]["domain"])
         print("Gateway:      " + result["portal"]["gateway"])
+        print("Gateway mode: " + result["portal"]["gateway_source"])
         print("DHCP range:   " + result["portal"]["dhcp_start"] +
               " - " + result["portal"]["dhcp_end"])
         for note in result["warnings"]:
