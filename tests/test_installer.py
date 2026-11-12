@@ -109,6 +109,61 @@ class WizardTests(unittest.TestCase):
                     wizard.main(["--non-interactive", "--uplink", "doesnotexist"]), 2
                 )
 
+    def test_cancelled_interactive_update_never_calls_apply(self):
+        detected = {
+            "uplink": "wlp109s0", "channel": 6, "phy": "phy0",
+            "gateway": "10.77.77.1/24",
+            "dhcp_start": "10.77.77.50",
+            "dhcp_end": "10.77.77.200",
+            "source": "existing Techworld bridge (preserved)",
+            "occupied_networks": [],
+            "preserve_existing": True,
+        }
+        with patch.object(wizard, "get_preflight", return_value={"status": "adoption_required"}), \
+             patch.object(wizard, "discover", return_value=detected), \
+             patch("builtins.input", side_effect=["Wireless", "", "n"]), \
+             patch.object(wizard, "apply_existing") as apply_mock:
+            self.assertEqual(wizard.main([]), 0)
+            apply_mock.assert_not_called()
+
+    def test_approved_interactive_update_runs_guarded_apply(self):
+        detected = {
+            "uplink": "wlp109s0", "channel": 6, "phy": "phy0",
+            "gateway": "10.77.77.1/24",
+            "dhcp_start": "10.77.77.50",
+            "dhcp_end": "10.77.77.200",
+            "source": "existing Techworld bridge (preserved)",
+            "occupied_networks": [],
+            "preserve_existing": True,
+        }
+        with patch.object(wizard, "get_preflight", return_value={"status": "adoption_required"}), \
+             patch.object(wizard, "discover", return_value=detected), \
+             patch("builtins.input", side_effect=["Wireless", "", "yes"]), \
+             patch.object(
+                 wizard, "apply_existing",
+                 return_value={"changed": True, "backup_directory": "/test/backup"},
+             ) as apply_mock:
+            self.assertEqual(wizard.main([]), 0)
+            apply_mock.assert_called_once()
+
+    def test_advanced_requires_explicit_network_opt_in(self):
+        detected = {
+            "uplink": "wlp109s0", "channel": 6, "phy": "phy0",
+            "gateway": "10.77.77.1/24",
+            "dhcp_start": "10.77.77.50",
+            "dhcp_end": "10.77.77.200",
+            "source": "existing Techworld bridge (preserved)",
+            "occupied_networks": [],
+            "preserve_existing": True,
+        }
+        with patch.object(wizard, "get_preflight", return_value={"status": "adoption_required"}), \
+             patch.object(wizard, "discover", return_value=detected), \
+             patch("builtins.input", side_effect=["n", "Wireless", "", "n"]) as inp, \
+             patch.object(wizard, "apply_existing") as apply_mock:
+            self.assertEqual(wizard.main(["--advanced"]), 0)
+            self.assertEqual(inp.call_count, 4)
+            apply_mock.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()
