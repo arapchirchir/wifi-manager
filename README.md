@@ -164,6 +164,20 @@ The production adapter, locking, crash recovery, hardware channel changes
 and systemd deployment have not been integrated. Avoid executing the live
 hotspot on the single-radio workstation until this work is finished.
 
+## Coordinated AP and hostapd transaction (development)
+
+`installer/network_transaction.py` combines the verified upstream snapshot,
+reversible channel update and ownership-recorded AP creation in one
+transaction. If AP creation fails or the upstream snapshot changes, the
+orchestrator attempts both interface and configuration rollback. The new
+offline integration tests cover successful preparation, AP creation failures,
+upstream changes and unsupported channels.
+
+This has **not** been connected to the live startup service. Safe deployment
+still requires a production network adapter, an exclusive lock, persisted
+crash recovery and package/service configuration integration. The legacy
+installed scripts are unchanged. Do not use `--execute` yet.
+
 ## Offline tests
 
 ```bash
