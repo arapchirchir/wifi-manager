@@ -283,6 +283,30 @@ does not enable automatic crash recovery. The existing legacy cleanup
 scripts are still unsafe and must not be deployed. Do not start the
 hotspot based on this marker or on offline test results.
 
+## Phase 6 Linux integration adapters (draft PR #6)
+
+`installer/linux_adapters.py` contains a command-injection-only service
+adapter that restricts service control to named Techworld units and starts
+only the Techworld parent service. Its Linux link adapter observes reserved
+interfaces with iproute2 and iw and verifies their indices and types.
+**Creation and removal are explicitly disabled.** Neither adapter is a live
+daemon, installer or systemd integration.
+
+Run the read-only source audit from the development repository:
+
+```bash
+python3 scripts/techworld-integration-audit.py
+```
+
+The audit reports existing name-only deletion in the legacy AP setup and
+service paths and lists the safeguards required before deployment. A nonzero
+exit code indicates blocked integration, not a live network failure.
+
+**Keep the hotspot stopped.** Existing installed service overrides are not
+changed by this PR. The remaining steps include a verified network mutator,
+crash-safe receipts, and tested service stop ordering on an isolated host.
+Do not install or enable these draft modules on your workstation.
+
 ## Offline tests
 
 ```bash
