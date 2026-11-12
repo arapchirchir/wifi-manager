@@ -16,10 +16,15 @@ class GuardTests(unittest.TestCase):
             nmcli = root / "nmcli"
             cfg = root / "hostapd.conf"
             cfg.write_text(f"interface=ap0\nssid=Techworld-WiFi\nhw_mode=g\nchannel={ap_channel}\n")
-            iw.write_text("#!/bin/sh\n"
-                          "echo 'Interface wlp109s0'\n" +
-                          ("echo 'ssid Talai'\n" if associated else "") +
-                          f"echo 'channel {upstream} (2462 MHz)'\n")
+            iw.write_text(
+                "#!/bin/sh\n"
+                "if [ \"$3\" = link ]; then\n"
+                + ("  echo 'Connected to 04:25:c5:9a:77:a0 (on wlp109s0)'\n"
+                   "  echo 'SSID: Talai_B'\n" if associated else "  echo 'Not connected.'\n")
+                + "else\n  echo 'Interface wlp109s0'\n"
+                + f"  echo 'channel {upstream} (2462 MHz)'\n"
+                + "fi\n"
+            )
             nmcli.write_text(
                 "#!/bin/sh\n"
                 + ("echo '100 (connected)'\n" if connected else "echo '30 (disconnected)'\n")
