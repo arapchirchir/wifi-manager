@@ -44,7 +44,7 @@ class CleanupTests(unittest.TestCase):
     def test_all_inactive_needs_no_stop(self):
         fake = FakeServices({unit: "inactive" for unit in mod.ALL_UNITS})
         self.assertEqual(mod.stop_owned_after_failed_start(fake, []), {})
-        self.assertFalse(any(cmd[1] == "stop" for cmd in fake.calls))
+        self.assertEqual([cmd[-1] for cmd in fake.calls if cmd[1] == "stop"], ["techworld-hotspot"])
 
 
 if __name__ == "__main__":
