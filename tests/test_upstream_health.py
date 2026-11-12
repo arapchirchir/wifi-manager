@@ -11,12 +11,13 @@ spec.loader.exec_module(mod)
 
 
 class FakeRunner:
-    def __init__(self, connected=True, channel=11, ssid="Talai", gateway=True, routes=None):
+    def __init__(self, connected=True, channel=11, ssid="Talai", gateway=True, routes=None, linked=True):
         self.connected = connected
         self.channel = channel
         self.ssid = ssid
         self.gateway = gateway
         self.routes = routes
+        self.linked = linked
         self.calls = []
 
     def __call__(self, cmd):
@@ -24,6 +25,8 @@ class FakeRunner:
         if cmd[0] == "nmcli":
             return "100 (connected)\n" if self.connected else "30 (disconnected)\n"
         if cmd[0] == "iw":
+            if cmd[-1] == "link":
+                return (f"Connected to 04:25:c5:9a:77:a0 (on wlp109s0)\n\tSSID: {self.ssid}\n" if self.linked and self.ssid else "Not connected.\n")
             return ("Interface wlp109s0\n" +
                     (f"\tssid {self.ssid}\n" if self.ssid else "") +
                     (f"\tchannel {self.channel} (2462 MHz)\n"
@@ -70,6 +73,15 @@ class UpstreamHealthTests(unittest.TestCase):
             "dst": "default", "gateway": "192.168.100.1"
         }])
         report = mod.inspect("wlp109s0", 11, runner)
+        self.assertFalse(report["healthy"])
+
+    def test_roamed_profile_name_does_not_matter(self):
+        report = mod.inspect("wlp109s0", runner=FakeRunner(ssid="Talai_B"))
+        self.assertTrue(report["healthy"])
+        self.assertEqual(report["ssid"], "Talai_B")
+
+    def test_no_association_despite_info_ssid_fails(self):
+        report = mod.inspect("wlp109s0", runner=FakeRunner(ssid="Talai", linked=False))
         self.assertFalse(report["healthy"])
 
     def test_disconnected_fails(self):
