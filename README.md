@@ -325,6 +325,29 @@ stop, enable or restart for the hotspot** until loaded units, ownership-safe
 cleanup, crash recovery and isolated-host tests have been reviewed. The
 existing unit files are unchanged.
 
+## Phase 6 effective-unit and link-identity audit (draft PR #8)
+
+The read-only `installer/effective_unit_audit.py` inspects the loaded
+systemd properties of the seven Techworld units through an explicit command
+executor. It reports drop-ins, legacy AP startup and cleanup commands, and
+unexpected unit fragments. It does **not** approve startup or shutdown, and
+a property snapshot does not verify script contents or establish that the
+system cannot change afterward.
+
+```bash
+python3 scripts/techworld-effective-unit-audit.py
+```
+
+This read-only command intentionally exits with code 1 to avoid treating
+the output as deployment authorization. The cleanup inspector now also rejects
+duplicate interface names/indices and malformed link inventories instead of
+silently accepting ambiguous observations.
+
+**Live interface mutation is still disabled.** Do not deploy the legacy
+service files, start the hotspot or assume a successful audit makes the
+single-radio laptop safe. A durable creation/ownership handshake and
+isolated hardware tests are still outstanding.
+
 ## Offline tests
 
 ```bash
