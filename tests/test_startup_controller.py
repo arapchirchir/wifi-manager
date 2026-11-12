@@ -123,6 +123,7 @@ class StartTests(unittest.TestCase):
         with self.assertRaisesRegex(StartupError, "recovery incomplete"):
             self.run_start(post_check=lambda: False)
         self.assertIn("ap0", self.network.links)
+        self.assertIn(b"channel=11", self.config.read_bytes())
 
     def test_active_existing_service_not_touched(self):
         self.services.states["opennds"] = "active"
