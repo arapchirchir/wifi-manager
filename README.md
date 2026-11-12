@@ -123,6 +123,19 @@ and handle connectivity recovery without losing the host's internet access.
 It is not yet integrated with the installer or systemd units. Do not equate
 service `active` status with proven internet reachability.
 
+## Interface ownership receipts (development only)
+
+The new `installer/ownership_receipt.py` can create an exclusive, mode-0600
+interface creation record within a pre-existing private directory, and
+validates it when read. `installer/resource_ownership.py` compares the
+recorded names, types and interface indices with observed live state before
+planning any removal. An interface name alone does not establish ownership.
+
+**Not connected to AP preparation or cleanup yet.** The running host has no
+new ownership receipts and the installed cleanup script remains unchanged.
+Do not deploy the scripts or start the hotspot until creation receipts,
+partial-failure cleanup, and rollback behavior are integrated and tested.
+
 ## Offline tests
 
 ```bash
