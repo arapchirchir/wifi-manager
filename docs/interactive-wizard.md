@@ -4,14 +4,14 @@ The project currently provides a **non-destructive configuration wizard**. This 
 
 ```bash
 bash install.sh
-bash install.sh --non-interactive --uplink wlp109s0
-bash install.sh --json --ssid Techworld-WiFi --domain wireless.test --uplink wlp109s0
+bash install.sh --non-interactive
+bash install.sh --json --ssid Techworld-WiFi --domain wireless.test
 python3 -m unittest discover -s tests -v
 ```
 
-The wizard asks for Wi-Fi SSID, captive portal domain, wireless uplink, gateway IPv4 address/prefix, DHCP range start, and DHCP range end. It defaults to `Techworld-WiFi`, `wireless.test`, a detected managed Wi-Fi adapter, `10.77.77.1/24`, `10.77.77.50`, and `10.77.77.200`.
+The normal wizard prompts only for Wi-Fi SSID and captive portal domain. Its read-only discovery checks the active managed Wi-Fi default route, physical radio's station+AP concurrent mode, upstream channel, existing IPv4 interfaces and routes (including Docker, libvirt, and VPN). It preserves an existing Techworld bridge gateway for legacy adoption, or selects a non-overlapping private /24 network and derives DHCP automatically. Network choices are shown for review. Use `bash install.sh --advanced` for manual overrides, which must still pass validation. If discovery is ambiguous or radio concurrency is unsupported, planning stops safely.
 
-It validates SSID byte length, DNS labels, `.local` avoidance, interface names, RFC1918 gateway, usable subnet and DHCP boundaries. Validation prevents generating an invalid plan but does not replace checks for upstream-channel limitations, actual port/interface conflicts, or host network collisions.
+It validates SSID byte length, DNS labels, `.local` avoidance, interface names, RFC1918 gateway, usable subnet and DHCP boundaries. Auto detection is a preflight, not proof that a concurrent AP will work on every Wi-Fi chipset. The eventual installer must test channel/interface combinations and re-check route/port conflicts immediately before modifying the system.
 
 An already-running installation with no ownership manifest is **adoption_required**: the wizard can print a configuration preview, but no modification or automatic adoption occurs. Preflight `conflict` and `inspection_failed` block planning.
 
