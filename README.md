@@ -178,6 +178,70 @@ still requires a production network adapter, an exclusive lock, persisted
 crash recovery and package/service configuration integration. The legacy
 installed scripts are unchanged. Do not use `--execute` yet.
 
+## Dynamic WAN selection preview (Issue #2)
+
+The read-only `installer/uplink_selection.py` now compares connected Wi-Fi
+and Ethernet IPv4 default routes, respects route metrics, prefers Ethernet
+on equal metrics, verifies Wi-Fi association and refuses ambiguous routes.
+No NetworkManager profile or firewall setting is modified.
+
+```bash
+python3 scripts/techworld-uplink-plan.py --json
+```
+
+A default gateway does **not** prove real internet access. For Ethernet,
+the available AP radio and regulatory channel must still be validated. A
+live Wi-Fi to Ethernet transition, restart, crash recovery and installation
+integration are **not implemented**. Keep GitHub issue #2 open and don't
+start the hotspot based on this read-only selection alone.
+
+## Automatic WAN and AP radio planning (Issue #2, read-only)
+
+Use `python3 scripts/techworld-network-plan.py --json` to inspect the
+current WAN default route plus available Wi-Fi PHYs, and choose a compatible
+legacy 2.4 GHz AP channel where the advertised radio capabilities permit.
+For a single radio, the AP channel must follow the associated Wi-Fi uplink.
+For Ethernet WAN, AP-capable idle Wi-Fi hardware must be available. Ambiguous
+radio choices fail closed rather than guessing; `--ap-radio phyN` can
+resolve a choice after inspection.
+
+The `installer/restart_decision.py` comparison detects SSID, gateway,
+WAN interface, AP radio, and channel changes. It reports when supervised
+reconfiguration and consent are needed; **it does not perform a restart**.
+
+The read-only plan now verifies the selected PHY is not soft- or hard-blocked
+by rfkill, shows the detected regulatory country (without claiming full
+regulatory compliance), and makes the selected WAN AP channel consistent with
+the resolved AP radio. A blocked or missing PHY rfkill entry causes refusal.
+
+Remaining work: complete regulatory-domain/channel validation, Internet
+reachability, live transition/restart, locking, crash recovery and end-to-end
+deployment.
+The legacy installed scripts are unchanged. Do not enable the hotspot yet.
+
+## Coordinated startup and recovery simulation
+
+`installer/startup_controller.py` now combines upstream identity checks,
+exclusive private locking, ownership-recorded AP setup, hostapd channel
+updates, injected Techworld service startup and post-start verification.
+Failure paths stop only enumerated Techworld services, verify their state,
+remove only receipt-matched interfaces, and restore the original hostapd
+configuration only when service shutdown and config identity are confirmed.
+
+`installer/setup_lock.py` uses a private 0700-owned directory and a
+nonblocking file lock; simultaneous simulated startups are refused. Tests
+include partial service failures, upstream changes, unknown interface
+ownership, repeated locking and failed stop cleanup. These tests use **mocked
+service and network adapters** and temporary files, not the real laptop.
+
+**Not production ready:** the live legacy systemd units and shell
+preparation/cleanup scripts remain separate from this controller. In
+particular, interface creation and the ownership receipt are not yet
+crash-atomic, service and lock interoperability with legacy processes is
+not guaranteed, and there is no durable post-crash recovery journal or
+actual upstream Internet reachability verification. Do not execute live
+startup, enable the installed hotspot, or merge this as production-ready.
+
 ## Offline tests
 
 ```bash
