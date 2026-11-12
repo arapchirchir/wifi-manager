@@ -14,7 +14,7 @@ class GuardTests(unittest.TestCase):
             iw = root / "iw"
             ip = root / "ip"
             cfg = root / "hostapd.conf"
-            cfg.write_text(f"interface=ap0\nssid=Techworld-WiFi\nchannel={ap_channel}\n")
+            cfg.write_text(f"interface=ap0\nssid=Techworld-WiFi\nhw_mode=g\nchannel={ap_channel}\n")
             iw.write_text("#!/bin/sh\n"
                           "echo 'Interface wlp109s0'\n" +
                           ("echo 'ssid Talai'\n" if associated else "") +
