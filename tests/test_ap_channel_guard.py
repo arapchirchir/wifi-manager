@@ -8,7 +8,7 @@ from pathlib import Path
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "techworld-ap-prepare"
 
 class GuardTests(unittest.TestCase):
-    def run_guard(self, upstream, ap_channel, associated=True, connected=True, default_route=True):
+    def run_guard(self, upstream, ap_channel, associated=True, connected=True, default_route=True, existing_interface=None):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)
             iw = root / "iw"
@@ -30,10 +30,12 @@ class GuardTests(unittest.TestCase):
                 + ("echo '100 (connected)'\n" if connected else "echo '30 (disconnected)'\n")
             )
             ip.write_text(
-                "#!/bin/sh\n"
-                "if [ \"$1 $2 $3 $4 $5 $6\" = \"-4 route show default dev wlp109s0\" ]; then\n"
-                + ("  echo 'default via 192.168.100.1 dev wlp109s0'\n" if default_route else "  :\n")
-                + "  exit 0\nfi\necho 'MOCK IP CALLED' >&2\nexit 99\n"
+                "#!/bin/sh\\n"
+                + (f'if [ "$1 $2 $3 $4" = "link show {existing_interface}" ]; then exit 0; fi\\n'
+                   if existing_interface else "")
+                + 'if [ "$1 $2 $3 $4 $5 $6" = "-4 route show default dev wlp109s0" ]; then\\n'
+                + ("  echo 'default via 192.168.100.1 dev wlp109s0'\\n" if default_route else "  :\\n")
+                + "  exit 0\\nfi\\necho 'MOCK IP CALLED' >&2\\nexit 99\\n"
             )
             nmcli.chmod(0o755)
             iw.chmod(0o755)
@@ -83,6 +85,20 @@ class GuardTests(unittest.TestCase):
         self.assertIn("No IPv4 default route", p.stderr)
         self.assertIn("channel=6", cfg)
         self.assertFalse(backed_up)
+
+    def test_existing_ap_is_not_adopted(self):
+        p, cfg, backup = self.run_guard(11, 6, existing_interface="ap0")
+        self.assertEqual(p.returncode, 1)
+        self.assertIn("refusing to adopt", p.stderr)
+        self.assertIn("channel=6", cfg)
+        self.assertFalse(backup)
+
+    def test_existing_bridge_is_not_adopted(self):
+        p, cfg, backup = self.run_guard(11, 6, existing_interface="br-techworld")
+        self.assertEqual(p.returncode, 1)
+        self.assertIn("refusing to adopt", p.stderr)
+        self.assertIn("channel=6", cfg)
+        self.assertFalse(backup)
 
     def test_non_numeric_channel_is_rejected(self):
         p, config, backed_up = self.run_guard("unknown", "unknown")
