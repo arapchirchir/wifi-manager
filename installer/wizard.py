@@ -213,6 +213,12 @@ def main(argv=None):
         # Advanced gateway choices must be private and non-overlapping.
         network_overridden = values["gateway"] != detected["gateway"]
         if network_overridden:
+            try:
+                ipaddress.IPv4Interface(values["gateway"])
+            except ValueError as exc:
+                raise ConfigurationError(
+                    f"Invalid gateway address/prefix: {exc}"
+                ) from exc
             conflict = conflicting_network(
                 values["gateway"], detected["occupied_networks"],
                 allow_bridge=False,
