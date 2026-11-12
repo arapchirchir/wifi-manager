@@ -75,11 +75,12 @@ def rollback(adapter, receipt_dir):
     directory = Path(receipt_dir)
     failures = []
     for name, _ in reversed(INTERFACES):
-        if name == "br-techworld" and adapter.inspect("ap0") is not None:
-            failures.append("AP still present: retaining bridge")
-            continue
+
         path = directory / (name + ".json")
         if not path.exists() and not path.is_symlink():
+            continue
+        if name == "br-techworld" and adapter.inspect("ap0") is not None:
+            failures.append("AP still present: retaining bridge")
             continue
         try:
             receipt = read_receipt(path)
