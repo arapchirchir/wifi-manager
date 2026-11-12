@@ -74,7 +74,7 @@ Advanced mode first asks whether to customize detected network settings. Manual 
 
 ## Channel synchronization safety
 
-For a single-radio adapter, the hotspot's channel needs to follow the upstream association. The repository's `installer/channel_config.py` can render a matching hostapd configuration without writing to the system. The revised `scripts/techworld-ap-prepare` rejects an incorrect channel before modifying the network. **The full deployment integration is not complete:** do not copy these scripts over the live installation or restart the hotspot until the guarded update and recovery process is ready. A router that changes channels after startup still needs a supervised recovery mechanism.
+For a single-radio adapter, the hotspot's channel needs to follow the upstream association. The repository's `installer/channel_config.py` can render a matching hostapd configuration without writing to the system. The revised `scripts/techworld-ap-prepare` now reads the active upstream channel and, for the existing 2.4 GHz `hw_mode=g` configuration on channels 1-11, backs up and atomically synchronizes the dedicated hostapd channel **before** modifying the AP or bridge interfaces. If the upstream isn't associated or the band/configuration is unsupported, preparation stops. **Deployment and upstream recovery integration are not complete:** do not copy these scripts over the live installation or restart the hotspot until the supervised update and recovery process is ready. A router that changes channels after startup still needs a supervised recovery mechanism.
 
 ## Security and limitations
 
