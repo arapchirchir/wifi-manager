@@ -33,12 +33,12 @@ def parse_radios(iw_dev):
 def allowed_legacy_channels(phy_info):
     """Conservative 2.4GHz legacy channels, refusing disabled/no-IR entries.
 
-    This is deliberately stricter than a full regulatory compliance check.
+    Frequency listings can use 2412 MHz or 2412.0 MHz depending on iw.\n    This is deliberately stricter than a full regulatory compliance check.
     The production installer must also check regulatory domain and rfkill.
     """
     channels = set()
     for line in phy_info.splitlines():
-        match = re.search(r"\*\s+(\d+)\s+MHz\s+\[(\d+)\]", line)
+        match = re.search(r"\*\s+(\d+)(?:\.0+)?\s+MHz\s+\[(\d+)\]", line)
         if not match:
             continue
         freq, channel = int(match.group(1)), int(match.group(2))
