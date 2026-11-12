@@ -30,12 +30,12 @@ class GuardTests(unittest.TestCase):
                 + ("echo '100 (connected)'\n" if connected else "echo '30 (disconnected)'\n")
             )
             ip.write_text(
-                "#!/bin/sh\\n"
-                + (f'if [ "$1 $2 $3 $4" = "link show {existing_interface}" ]; then exit 0; fi\\n'
+                "#!/bin/sh\n"
+                + (f'if [ "$1 $2 $3 $4" = "link show {existing_interface}" ]; then exit 0; fi\n'
                    if existing_interface else "")
-                + 'if [ "$1 $2 $3 $4 $5 $6" = "-4 route show default dev wlp109s0" ]; then\\n'
-                + ("  echo 'default via 192.168.100.1 dev wlp109s0'\\n" if default_route else "  :\\n")
-                + "  exit 0\\nfi\\necho 'MOCK IP CALLED' >&2\\nexit 99\\n"
+                + 'if [ "$1 $2 $3 $4 $5 $6" = "-4 route show default dev wlp109s0" ]; then\n'
+                + ("  echo 'default via 192.168.100.1 dev wlp109s0'\n" if default_route else "  :\n")
+                + "  exit 0\nfi\necho 'MOCK IP CALLED' >&2\nexit 99\n"
             )
             nmcli.chmod(0o755)
             iw.chmod(0o755)
