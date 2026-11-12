@@ -50,6 +50,29 @@ class RadioSelectionTests(unittest.TestCase):
     def test_regulatory_disabled_channels_ignored(self):
         self.assertEqual(allowed_legacy_channels(FREQUENCIES), [1, 6, 11])
 
+    def test_decimal_mhz_lines_from_real_iw_output(self):
+        frequencies = """Band 1:
+            * 2412.0 MHz [1] (20.0 dBm)
+            * 2437.0 MHz [6] (20.0 dBm)
+            * 2462.0 MHz [11] (20.0 dBm)
+            * 2467.0 MHz [12] (disabled)
+            * 5180.0 MHz [36] (no IR)
+        """
+        self.assertEqual(allowed_legacy_channels(frequencies), [1, 6, 11])
+
+    def test_decimal_mhz_shared_radio_selects_channel_eleven(self):
+        info = SHARED.replace("2412 MHz", "2412.0 MHz").replace(
+            "2437 MHz", "2437.0 MHz"
+        ).replace("2462 MHz", "2462.0 MHz")
+        result = choose_radio({"phy0": {"managed": ["wlp109s0"]}},
+                              selected(channel=11), {"phy0": info})
+        self.assertEqual(result["channel"], 11)
+
+    def test_fractional_frequency_not_accepted_as_different_channel(self):
+        self.assertEqual(allowed_legacy_channels(
+            " * 2462.5 MHz [11] (20.0 dBm)\n"
+        ), [])
+
     def test_single_radio_matches_upstream_channel(self):
         radios = {"phy0": {"managed": ["wlp109s0"]}}
         result = choose_radio(radios, selected(), {"phy0": SHARED})
