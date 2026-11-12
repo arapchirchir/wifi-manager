@@ -92,6 +92,45 @@ class CleanupTests(unittest.TestCase):
         self.assertTrue(result["errors"])
         self.assertEqual(net.deleted, [])
 
+    def test_unrelated_bridge_member_prevents_bridge_deletion(self):
+        net = FakeNetwork()
+        net.links["veth-other"] = {
+            "ifname": "veth-other", "ifindex": 900,
+            "master": "br-techworld",
+        }
+        result = safe_cleanup(self.receipt, execute=True, reader=net.read,
+                              mutator=net.mutate)
+        self.assertIn(("ap0", "ap", 101), net.deleted)
+        self.assertIn("br-techworld", net.links)
+        self.assertTrue(any("attached interfaces" in error
+                            for error in result["errors"]))
+
+    def test_attached_ap_not_deleted_on_identity_mismatch(self):
+        net = FakeNetwork()
+        net.links["ap0"]["ifindex"] = 501
+        net.links["ap0"]["master"] = "br-techworld"
+        result = safe_cleanup(self.receipt, execute=True, reader=net.read,
+                              mutator=net.mutate)
+        self.assertTrue(result["errors"])
+        self.assertEqual(net.deleted, [])
+
+    def test_bridge_membership_query_failure_retains_bridge(self):
+        net = FakeNetwork()
+        calls = [0]
+        def read(cmd):
+            if cmd == ["ip", "-j", "-d", "link", "show"]:
+                calls[0] += 1
+                if calls[0] >= 5:
+                    raise RuntimeError("link inspection unavailable")
+            return net.read(cmd)
+        # A monitoring failure must never permit deleting the bridge.
+        # This injected reader raises before the bridge is removed.
+        result = safe_cleanup(self.receipt, execute=True, reader=read,
+                              mutator=net.mutate)
+        self.assertTrue(any("Cannot verify bridge membership" in error
+                            for error in result["errors"]))
+        self.assertIn("br-techworld", net.links)
+
     def test_observation_detects_bridge_and_ap(self):
         net = FakeNetwork()
         result = observe(["ap0", "br-techworld"], reader=net.read)

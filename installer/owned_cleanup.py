@@ -44,6 +44,23 @@ def observe(names, reader=shell_read):
     return seen
 
 
+
+def bridge_members(bridge, reader=shell_read):
+    """Fail closed when a bridge has attached links, including unrelated ones.
+
+    The AP must be removed first. Linux iproute2 reports bridge membership
+    through each link's 'master' field; an unknown response never permits
+    deleting the bridge.
+    """
+    raw = json.loads(reader(["ip", "-j", "-d", "link", "show"]))
+    if not isinstance(raw, list):
+        raise CleanupError("Invalid link listing during bridge membership check")
+    if not all(isinstance(item, dict) and isinstance(item.get("ifname"), str)
+               for item in raw):
+        raise CleanupError("Incomplete link listing during bridge membership check")
+    return [item["ifname"] for item in raw if item.get("master") == bridge]
+
+
 def safe_cleanup(receipt_path, *, execute=False, reader=shell_read, mutator=None):
     """Refuse any deletion without a valid receipt and exact live identity.
 
@@ -76,6 +93,17 @@ def safe_cleanup(receipt_path, *, execute=False, reader=shell_read, mutator=None
             present = observe(ap_names, reader)
             if any(ap in present for ap in ap_names):
                 result["errors"].append("Recorded AP still present; retaining bridge")
+                break
+        if kind == "bridge":
+            try:
+                members = bridge_members(name, reader)
+            except (OSError, ValueError, TypeError, RuntimeError, CleanupError) as exc:
+                result["errors"].append(f"Cannot verify bridge membership: {exc}")
+                break
+            if members:
+                result["errors"].append(
+                    f"Bridge {name} still has attached interfaces: {members}"
+                )
                 break
         mutator(name, kind, index)
         result["deleted"].append(name)
