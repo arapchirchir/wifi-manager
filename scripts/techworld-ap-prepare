@@ -23,11 +23,56 @@ if [[ ! -f "$HOSTAPD_CONF" ]]; then
     exit 1
 fi
 
-CONFIG_CHANNEL=$(awk -F= '$1 ~ /^[[:space:]]*channel[[:space:]]*$/ {gsub(/[[:space:]]/, "", $2); print $2}' "$HOSTAPD_CONF")
-if [[ ! "$CONFIG_CHANNEL" =~ ^[0-9]+$ || "$CONFIG_CHANNEL" != "$CHANNEL" ]]; then
-    echo "ERROR: Upstream Wi-Fi channel is $CHANNEL, but hostapd is configured for channel ${CONFIG_CHANNEL:-unset}." >&2
-    echo "The installer must synchronize channels with explicit approval before the hotspot starts." >&2
+# Safely synchronize a dedicated hostapd config before touching the AP.
+# Limit this legacy hw_mode=g setup to non-DFS 2.4 GHz channels. A future
+# installer can handle 5 GHz, country rules, and hw_mode transitions.
+if (( CHANNEL < 1 || CHANNEL > 11 )); then
+    echo "ERROR: Channel $CHANNEL is outside the supported 2.4 GHz channels 1-11 for this legacy configuration." >&2
     exit 1
+fi
+
+if [[ -L "$HOSTAPD_CONF" || ! -f "$HOSTAPD_CONF" ]]; then
+    echo "ERROR: Hostapd configuration must be a regular non-symlink file." >&2
+    exit 1
+fi
+
+HOSTAPD_INTERFACE=$(awk -F= '$1 == "interface" {print $2}' "$HOSTAPD_CONF")
+HOSTAPD_MODE=$(awk -F= '$1 == "hw_mode" {print $2}' "$HOSTAPD_CONF")
+CONFIG_CHANNEL=$(awk -F= '$1 == "channel" {print $2}' "$HOSTAPD_CONF")
+CHANNEL_COUNT=$(grep -Ec '^channel=' "$HOSTAPD_CONF" || true)
+if [[ "$HOSTAPD_INTERFACE" != "$AP" || "$HOSTAPD_MODE" != "g" ||
+      "$CHANNEL_COUNT" != "1" || ! "$CONFIG_CHANNEL" =~ ^[0-9]+$ ]]; then
+    echo "ERROR: Unsupported or ambiguous hostapd AP configuration; no changes made." >&2
+    exit 1
+fi
+
+if [[ "$CONFIG_CHANNEL" != "$CHANNEL" ]]; then
+    # Render the replacement first and stage it beside the original. This
+    # keeps the update atomic and preserves owner/permissions on replacement.
+    BACKUP="${HOSTAPD_CONF}.before-channel-sync"
+    if [[ -L "$BACKUP" ]]; then
+        echo "ERROR: Refusing symlink backup path: $BACKUP" >&2
+        exit 1
+    fi
+    TEMP_CONF=$(mktemp "${HOSTAPD_CONF}.tmp.XXXXXXXX")
+    trap 'rm -f "$TEMP_CONF"' EXIT
+    awk -v channel="$CHANNEL" '
+      /^channel=/ { print "channel=" channel; next }
+      { print }
+    ' "$HOSTAPD_CONF" > "$TEMP_CONF"
+    chmod --reference="$HOSTAPD_CONF" "$TEMP_CONF"
+    chown --reference="$HOSTAPD_CONF" "$TEMP_CONF"
+    cp -p -- "$HOSTAPD_CONF" "$BACKUP"
+    # A moved upstream channel is possible while preparing. Fail closed if it
+    # changes again, rather than touching AP or bridge interfaces.
+    LATEST_CHANNEL=$(iw dev "$UPLINK" info | awk '$1=="channel" {print $2; exit}')
+    if [[ "$LATEST_CHANNEL" != "$CHANNEL" ]]; then
+        echo "ERROR: Upstream channel changed during preparation; no AP changes made." >&2
+        exit 1
+    fi
+    mv -f -- "$TEMP_CONF" "$HOSTAPD_CONF"
+    trap - EXIT
+    echo "Synchronized dedicated hostapd channel: $CONFIG_CHANNEL -> $CHANNEL."
 fi
 
 echo "Verified upstream SSID '$CONNECTED_SSID' on channel $CHANNEL; AP channel matches."
