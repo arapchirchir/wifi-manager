@@ -55,7 +55,7 @@ class GuardTests(unittest.TestCase):
     def test_absent_association_does_not_touch_interface(self):
         p, config, backed_up = self.run_guard(11, 11, associated=False)
         self.assertEqual(p.returncode, 1)
-        self.assertIn("not associated", p.stderr)
+        self.assertIn("No active upstream Wi-Fi association", p.stderr)
 
     def test_valid_channel_eleven_passes_guard(self):
         p, config, backed_up = self.run_guard(11, 11)
