@@ -50,6 +50,39 @@ def allowed_legacy_channels(phy_info):
     return sorted(channels)
 
 
+
+def radio_block_state(rfkill_output, phy):
+    """Read rfkill list text and fail closed if the PHY cannot be identified."""
+    blocks = re.split(r"(?m)^(?=\d+:\s)", rfkill_output)
+    found = []
+    for block in blocks:
+        first = block.splitlines()[0] if block.splitlines() else ""
+        if not re.match(r"^\d+:\s+" + re.escape(phy) + r":\s+Wireless LAN\b", first):
+            continue
+        soft = re.search(r"(?m)^\s*Soft blocked:\s*(yes|no)\s*$", block)
+        hard = re.search(r"(?m)^\s*Hard blocked:\s*(yes|no)\s*$", block)
+        if not soft or not hard:
+            raise RadioError(f"Incomplete rfkill status for {phy}")
+        found.append({"soft_blocked": soft.group(1) == "yes",
+                      "hard_blocked": hard.group(1) == "yes"})
+    if len(found) != 1:
+        raise RadioError(f"Cannot uniquely verify rfkill for {phy}")
+    result = found[0]
+    if result["soft_blocked"] or result["hard_blocked"]:
+        raise RadioError(f"Wi-Fi radio {phy} is blocked by rfkill")
+    return result
+
+
+def regulatory_report(iw_reg_output):
+    """Report regulatory domain, without claiming the domain is validated."""
+    countries = re.findall(r"(?m)^\s*country\s+([A-Z]{2}|00):", iw_reg_output)
+    if not countries:
+        return {"countries": [], "verified": False,
+                "warning": "Regulatory country unavailable"}
+    return {"countries": countries, "verified": False,
+            "warning": "Regulatory rules still require production validation"}
+
+
 def choose_radio(radios, selected, phy_infos, *, preferred=None):
     """Choose a unique viable AP PHY and channel; return reasons otherwise.
 
