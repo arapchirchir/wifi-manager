@@ -24,6 +24,18 @@ fi
 # Do not infer internet availability from the default route alone.
 # Follow-up post-start checks must verify connectivity and fail safely.
 
+# Until creation receipts are persisted and verified, refuse to adopt or
+# modify interfaces already using Techworld's reserved names. This check must
+# precede any hostapd writes or interface changes.
+if ip link show "$BRIDGE" >/dev/null 2>&1; then
+    echo "ERROR: $BRIDGE already exists; refusing to adopt an unverified bridge." >&2
+    exit 1
+fi
+if ip link show "$AP" >/dev/null 2>&1; then
+    echo "ERROR: $AP already exists; refusing to adopt an unverified AP." >&2
+    exit 1
+fi
+
 # Validate the actual upstream channel BEFORE touching any interface.
 # Both managed STA and AP must share one channel on single-channel radios.
 HOSTAPD_CONF="${TECHWORLD_HOSTAPD_CONF:-/etc/hostapd/techworld.conf}"
