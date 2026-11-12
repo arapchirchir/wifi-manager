@@ -373,6 +373,28 @@ authorize a restart. The installed legacy AP scripts and systemd services
 remain unchanged; live network mutators are disabled. Do not activate the
 hotspot or deploy these draft changes as a production installer.
 
+## Phase 6 read-only recovery reconciliation (draft PR #10)
+
+`installer/recovery_reconciliation.py` compares the startup journal,
+per-interface creation intents, recorded interface indices and observed
+live AP/bridge identity. It distinguishes missing receipts, orphaned links,
+stale/reused indices and otherwise consistent snapshots. All outputs
+explicitly prohibit automatic cleanup or restart; matching records are
+**not independent proof of ownership**.
+
+For operator investigation of an existing private transaction directory:
+
+```bash
+python3 scripts/techworld-reconcile-status.py --receipt-dir /path/to/private/dir
+```
+
+The command only uses read-only `ip link show` and `iw dev info` and
+reads local transaction records. Its nonzero exit code is intentional.
+It cannot grant service activation or remove stale records. Future
+manual reconciliation must verify installed service state, kernel and
+radio identity, bridge members, configuration, and crash history before
+any privileged remediation. No live systemd scripts or interfaces are changed.
+
 ## Offline tests
 
 ```bash
