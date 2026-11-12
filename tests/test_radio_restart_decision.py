@@ -1,6 +1,6 @@
 """Offline radio and transition tests, no system network operations."""
 import unittest
-from installer.radio_selection import parse_radios, allowed_legacy_channels, choose_radio, RadioError
+from installer.radio_selection import parse_radios, allowed_legacy_channels, choose_radio, RadioError, radio_block_state, regulatory_report
 from installer.restart_decision import transition
 
 
@@ -111,6 +111,40 @@ class RadioSelectionTests(unittest.TestCase):
                               selected("ethernet"), {"phy0": AP_ONLY, "phy1": AP_ONLY},
                               preferred="phy1")
         self.assertEqual(result["phy"], "phy1")
+
+
+class RadioEnvironmentTests(unittest.TestCase):
+    def test_unblocked_phy(self):
+        output = ("1: hci0: Bluetooth\n"
+                  " Soft blocked: no\n Hard blocked: no\n"
+                  "2: phy0: Wireless LAN\n"
+                  " Soft blocked: no\n Hard blocked: no\n")
+        self.assertEqual(radio_block_state(output, "phy0"),
+                         {"soft_blocked": False, "hard_blocked": False})
+
+    def test_soft_blocked_phy_refused(self):
+        with self.assertRaisesRegex(RadioError, "blocked"):
+            radio_block_state("2: phy0: Wireless LAN\n"
+                              " Soft blocked: yes\n Hard blocked: no\n", "phy0")
+
+    def test_hard_blocked_phy_refused(self):
+        with self.assertRaisesRegex(RadioError, "blocked"):
+            radio_block_state("2: phy0: Wireless LAN\n"
+                              " Soft blocked: no\n Hard blocked: yes\n", "phy0")
+
+    def test_missing_phy_rfkill_fails_closed(self):
+        with self.assertRaisesRegex(RadioError, "Cannot uniquely"):
+            radio_block_state("1: hci0: Bluetooth\n", "phy0")
+
+    def test_regulatory_country_is_report_only(self):
+        report = regulatory_report("global\ncountry KE: DFS-UNSET\n")
+        self.assertEqual(report["countries"], ["KE"])
+        self.assertFalse(report["verified"])
+
+    def test_unknown_regulatory_domain_not_verified(self):
+        report = regulatory_report("global\n")
+        self.assertEqual(report["countries"], [])
+        self.assertFalse(report["verified"])
 
 
 class RestartDecisionTests(unittest.TestCase):
