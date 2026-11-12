@@ -28,8 +28,14 @@ fi
 # Both managed STA and AP must share one channel on single-channel radios.
 HOSTAPD_CONF="${TECHWORLD_HOSTAPD_CONF:-/etc/hostapd/techworld.conf}"
 UPLINK_INFO=$(iw dev "$UPLINK" info)
-CONNECTED_SSID=$(awk '$1=="ssid" {print $2; exit}' <<< "$UPLINK_INFO")
+UPLINK_LINK=$(iw dev "$UPLINK" link)
+CONNECTED_SSID=$(sed -n 's/^[[:space:]]*SSID: //p' <<< "$UPLINK_LINK" | head -n 1)
 CHANNEL=$(awk '$1=="channel" {print $2; exit}' <<< "$UPLINK_INFO")
+
+if ! grep -Eq '^Connected to ([[:xdigit:]]{2}:){5}[[:xdigit:]]{2}' <<< "$UPLINK_LINK"; then
+    echo "ERROR: No active upstream Wi-Fi association on $UPLINK." >&2
+    exit 1
+fi
 
 if [[ -z "$CONNECTED_SSID" || ! "$CHANNEL" =~ ^[0-9]+$ ]]; then
     echo "ERROR: Upstream Wi-Fi is not associated or its channel is unknown." >&2
